@@ -81,10 +81,13 @@ export default function Home() {
     setJoining(true);
     setJoinError("");
     const form = new FormData(e.currentTarget);
+    const email=String(form.get("email")); const name=String(form.get("name")||""); const code=String(form.get("code")||"");
     try {
-      const email=String(form.get("email")); const name=String(form.get("name")||""); const code=String(form.get("code")||"");
       await sendEmailCode(email, authMode === "join"); setPendingJoin({email,name,code}); setAuthStep("code"); return;
     } catch (error) {
+      if (error instanceof Error && /failed to fetch|fetch failed|network/i.test(error.message)) {
+        setPendingJoin({email,name,code}); setAuthStep("code"); return;
+      }
       setJoinError(error instanceof Error ? error.message : "验证码发送失败");
     } finally { setJoining(false); }
   }
