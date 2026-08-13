@@ -20,4 +20,5 @@
 @media(max-width:580px){.workspace-calendar{padding:16px;border-radius:17px}.mini-week,.mini-calendar-grid{gap:2px}.mini-calendar-grid button,.mini-calendar-grid .blank{min-height:36px}.side-calendar-head h2{font-size:16px}}
 .no-current-goal{display:flex;align-items:center;justify-content:space-between}.no-current-goal h2{margin:13px 0 7px}
 .member-pills button.selected{background:var(--black);color:var(--panel);border-color:var(--black);box-shadow:0 0 0 2px color-mix(in srgb,var(--black) 12%,transparent)}
+.due-mode{display:flex;gap:7px;margin-top:16px}.due-mode button{height:32px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--sub);font-size:11px;cursor:pointer}.due-mode button.selected{background:var(--black);border-color:var(--black);color:var(--panel)}.modal input:disabled{opacity:.5;cursor:not-allowed}
 .text-button{width:100%;border:0;background:transparent;color:var(--sub);font-size:11px;margin-top:12px;cursor:pointer}

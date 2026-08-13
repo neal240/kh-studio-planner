@@ -40,6 +40,7 @@ export default function Home() {
   const [currentName, setCurrentName] = useState("林野");
   const [currentMemberId, setCurrentMemberId] = useState("");
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
+  const [taskHasDueDate, setTaskHasDueDate] = useState(true);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [goalModal, setGoalModal] = useState(false);
@@ -67,7 +68,7 @@ export default function Home() {
         id: t.id,
         title: t.title,
         status: t.status,
-        date: t.due_at?.slice(0, 10) || "2026-08-22",
+        date: t.due_at?.slice(0, 10) || "",
         priority: t.priority === "high" ? "高" : t.priority === "low" ? "低" : "中",
         assignees: t.assignees.map(id => data.members.find(m => m.id === id)?.name || "未知成员"),
         goalId: t.goal_id || undefined,
@@ -105,7 +106,7 @@ export default function Home() {
   const done = goalTasks.filter(t => t.status === "done").length;
   const progress = goalTasks.length ? Math.round(done / goalTasks.length * 100) : 0;
   const daysLeft = currentGoal?.dueAt ? Math.max(0, Math.ceil((new Date(currentGoal.dueAt).getTime() - Date.now()) / 86400000)) : null;
-  const visible = filter === "我负责的" ? tasks.filter(t => t.assignees.includes(currentName)) : filter === "即将到期" ? tasks.filter(t => t.date <= "2026-08-15" && t.status !== "done") : tasks;
+  const visible = filter === "我负责的" ? tasks.filter(t => t.assignees.includes(currentName)) : filter === "即将到期" ? tasks.filter(t => Boolean(t.date) && t.date <= "2026-08-15" && t.status !== "done") : tasks;
 
   function toggleTask(id: number | string) {
     const task = tasks.find(t => t.id === id);
@@ -132,7 +133,7 @@ export default function Home() {
     e.preventDefault(); if (!title.trim()) return;
     const form = new FormData(e.currentTarget as HTMLFormElement);
     const taskTitle = title.trim();
-    const dueAt = String(form.get("dueAt"));
+    const dueAt = taskHasDueDate ? String(form.get("dueAt") || "") : "";
     const priorityLabel = String(form.get("priority")) as "高"|"中"|"低";
     const includeGoal = form.get("includeGoal") === "on";
     const selectedNames = team.filter(m=>selectedAssignees.includes(m.id)).map(m=>m.name);
@@ -140,7 +141,7 @@ export default function Home() {
     setTitle(""); setModal(null); setToast("任务已加入大目标");
     if (session) {
       try {
-        await plannerApi.createTask(session, { title: taskTitle, dueAt, priority: priorityLabel==="高"?"high":priorityLabel==="低"?"low":"medium", goalId: includeGoal?currentGoal?.id:undefined, assignees:selectedAssignees });
+        await plannerApi.createTask(session, { title: taskTitle, dueAt: dueAt || undefined, priority: priorityLabel==="高"?"high":priorityLabel==="低"?"low":"medium", goalId: includeGoal?currentGoal?.id:undefined, assignees:selectedAssignees });
         await loadWorkspace(session);
       } catch {
         setToast("任务保存在本机，但云端同步失败");
@@ -150,12 +151,14 @@ export default function Home() {
 
   function openNewTask() {
     setEditingTask(null); setTitle("");
+    setTaskHasDueDate(true);
     setSelectedAssignees(currentMemberId ? [currentMemberId] : []);
     setModal("task");
   }
 
   function openEditTask(task: Task) {
     setEditingTask(task); setTitle(task.title);
+    setTaskHasDueDate(Boolean(task.date));
     setSelectedAssignees(team.filter(member => task.assignees.includes(member.name)).map(member => member.id));
     setModal("task");
   }
@@ -164,7 +167,7 @@ export default function Home() {
     if (!editingTask) return addTask(e);
     e.preventDefault(); if (!title.trim()) return;
     const form = new FormData(e.currentTarget as HTMLFormElement);
-    const dueAt = String(form.get("dueAt"));
+    const dueAt = taskHasDueDate ? String(form.get("dueAt") || "") : "";
     const priority = String(form.get("priority")) as Task["priority"];
     const includeGoal = form.get("includeGoal") === "on";
     const assignees = team.length ? team.filter(member => selectedAssignees.includes(member.id)).map(member => member.name) : editingTask.assignees;
@@ -173,7 +176,7 @@ export default function Home() {
     setModal(null); setEditingTask(null); setTitle(""); setToast("任务已更新");
     if (session && typeof updated.id === "string") {
       try {
-        await plannerApi.updateTask(session, updated.id, {title:updated.title, dueAt, priority:priority === "高" ? "high" : priority === "低" ? "low" : "medium", goalId:includeGoal ? currentGoal?.id : undefined, assignees:selectedAssignees});
+        await plannerApi.updateTask(session, updated.id, {title:updated.title, dueAt:dueAt || undefined, priority:priority === "高" ? "high" : priority === "低" ? "low" : "medium", goalId:includeGoal ? currentGoal?.id : undefined, assignees:selectedAssignees});
         await loadWorkspace(session);
       } catch { setToast("更新失败，任务已恢复"); await loadWorkspace(session); }
     }
@@ -232,7 +235,7 @@ export default function Home() {
         </section></div><aside className="workspace-calendar" aria-label="任务日历"><div className="side-calendar-head"><div><span className="goal-tag">日程概览</span><h2>2026 年 8 月</h2></div><button className="calendar-link" onClick={()=>setView("calendar")}>查看日历</button></div><DashboardCalendar tasks={tasks} toggle={toggleTask}/></aside></div></>}
       </section>
 
-      {modal === "task" && <div className="overlay" onMouseDown={()=>{setModal(null);setEditingTask(null)}}><form key={editingTask?.id ?? "new"} className="modal" onSubmit={saveTask} onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="goal-tag">{editingTask?"编辑任务":"新任务"}</span><h2>{editingTask?"修改任务信息":"要推进什么事情？"}</h2></div><button type="button" aria-label="关闭" onClick={()=>{setModal(null);setEditingTask(null)}}>×</button></div><label>任务名称<input autoFocus value={title} onChange={e=>setTitle(e.target.value)} placeholder="例如：完成登录页面设计"/></label><div className="form-grid"><label>截止日期<input name="dueAt" type="date" defaultValue={editingTask?.date ?? "2026-08-22"}/></label><label>优先级<select name="priority" defaultValue={editingTask?.priority ?? "中"}><option>高</option><option>中</option><option>低</option></select></label></div><label>负责人<div className="member-pills">{team.map(m=><button type="button" className={selectedAssignees.includes(m.id)?"selected":""} onClick={()=>setSelectedAssignees(ids=>ids.includes(m.id)?ids.filter(id=>id!==m.id):[...ids,m.id])} key={m.id}>{m.name[0]} {m.name}</button>)}</div></label><label className="goal-check"><input name="includeGoal" type="checkbox" defaultChecked={editingTask ? Boolean(editingTask.goalId) : true} disabled={!currentGoal}/>{currentGoal?`计入“${currentGoal.title}”进度`:"当前没有可关联的大目标"}</label><button className="primary submit">{editingTask?"保存修改":"创建任务"}</button></form></div>}
+      {modal === "task" && <div className="overlay" onMouseDown={()=>{setModal(null);setEditingTask(null)}}><form key={editingTask?.id ?? "new"} className="modal" onSubmit={saveTask} onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="goal-tag">{editingTask?"编辑任务":"新任务"}</span><h2>{editingTask?"修改任务信息":"要推进什么事情？"}</h2></div><button type="button" aria-label="关闭" onClick={()=>{setModal(null);setEditingTask(null)}}>×</button></div><label>任务名称<input autoFocus value={title} onChange={e=>setTitle(e.target.value)} placeholder="例如：完成登录页面设计"/></label><div className="due-mode"><button type="button" className={taskHasDueDate?"selected":""} onClick={()=>setTaskHasDueDate(true)}>设置截止日期</button><button type="button" className={!taskHasDueDate?"selected":""} onClick={()=>setTaskHasDueDate(false)}>无截止日期</button></div><div className="form-grid"><label>截止日期<input name="dueAt" type="date" disabled={!taskHasDueDate} defaultValue={editingTask?.date || "2026-08-22"}/></label><label>优先级<select name="priority" defaultValue={editingTask?.priority ?? "中"}><option>高</option><option>中</option><option>低</option></select></label></div><label>负责人<div className="member-pills">{team.map(m=><button type="button" className={selectedAssignees.includes(m.id)?"selected":""} onClick={()=>setSelectedAssignees(ids=>ids.includes(m.id)?ids.filter(id=>id!==m.id):[...ids,m.id])} key={m.id}>{m.name[0]} {m.name}</button>)}</div></label><label className="goal-check"><input name="includeGoal" type="checkbox" defaultChecked={editingTask ? Boolean(editingTask.goalId) : true} disabled={!currentGoal}/>{currentGoal?`计入“${currentGoal.title}”进度`:"当前没有可关联的大目标"}</label><button className="primary submit">{editingTask?"保存修改":"创建任务"}</button></form></div>}
       {modal === "invite" && <div className="overlay" onMouseDown={()=>setModal(null)}><div className="modal invite" onMouseDown={e=>e.stopPropagation()}><div className="invite-icon"><Icon name="users"/></div><h2>邀请新成员</h2><p>把邀请码发给同事。对方输入名字，就能加入工作室。</p><div className="code"><span>KHKH-0826</span><button onClick={()=>{navigator.clipboard?.writeText("KHKH-0826");setToast("邀请码已复制")}}>复制</button></div><small>邀请码将在 7 天后失效 · 最多使用 10 次</small><button className="primary submit" onClick={()=>setModal(null)}>完成</button></div></div>}
       {goalModal && <div className="overlay" onMouseDown={()=>setGoalModal(false)}><form className="modal" onSubmit={addGoal} onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="goal-tag">新目标</span><h2>立一个大目标</h2></div><button type="button" onClick={()=>setGoalModal(false)}>×</button></div><label>目标名称<input name="title" required placeholder="例如：发布第一版 Demo"/></label><label>目标说明<input name="description" placeholder="一句话描述成功标准"/></label><label>截止日期<input name="dueAt" type="date"/></label><button className="primary submit">创建大目标</button></form></div>}
       {toast && <div className="toast"><span>✓</span>{toast}</div>}
@@ -259,14 +262,14 @@ function TaskList({tasks,toggle,edit,remove}:{tasks:Task[];toggle:(id:number|str
 
 function Board({tasks,toggle}:{tasks:Task[];toggle:(id:number|string)=>void}) { return <div className="board">{(["todo","doing","done"] as Status[]).map(s=><div className="column" key={s}><div className="column-title"><span className={`dot ${s}`}/><b>{statusLabel[s]}</b><em>{tasks.filter(t=>t.status===s).length}</em></div>{tasks.filter(t=>t.status===s).map(t=><button className="board-card" onClick={()=>toggle(t.id)} key={t.id}><span className={`priority p-${t.priority}`}>{t.priority}优先级</span><h3>{t.title}</h3><div><span>{dateText(t.date)}</span><span className="mini-faces">{t.assignees.map(a=><i key={a}>{a[0]}</i>)}</span></div></button>)}</div>)}</div> }
 
-function Calendar({tasks,toggle}:{tasks:Task[];toggle:(id:number|string)=>void}) { const days=[10,11,12,13,14,15,16,17,18,19,20,21,22,23]; return <div className="calendar-view"><div className="cal-head"><button>‹</button><h3>2026 年 8 月</h3><button>›</button></div><div className="week">{"一二三四五六日".split("").map(x=><span key={x}>周{x}</span>)}</div><div className="cal-grid">{days.map(d=><div className={d===13?"today":""} key={d}><b>{d}</b>{tasks.filter(t=>Number(t.date.slice(-2))===d).map(t=><button onClick={()=>toggle(t.id)} className={`cal-task s-${t.status}`} key={t.id}>{t.title}</button>)}</div>)}</div></div> }
+function Calendar({tasks,toggle}:{tasks:Task[];toggle:(id:number|string)=>void}) { const days=[10,11,12,13,14,15,16,17,18,19,20,21,22,23]; return <div className="calendar-view"><div className="cal-head"><button>‹</button><h3>2026 年 8 月</h3><button>›</button></div><div className="week">{"一二三四五六日".split("").map(x=><span key={x}>周{x}</span>)}</div><div className="cal-grid">{days.map(d=><div className={d===13?"today":""} key={d}><b>{d}</b>{tasks.filter(t=>Boolean(t.date)&&Number(t.date.slice(-2))===d).map(t=><button onClick={()=>toggle(t.id)} className={`cal-task s-${t.status}`} key={t.id}>{t.title}</button>)}</div>)}</div></div> }
 
 function DashboardCalendar({tasks,toggle}:{tasks:Task[];toggle:(id:number|string)=>void}) {
   const days = [null,null,null,null,null,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31];
-  const upcoming = tasks.filter(task=>task.status!=="done").sort((a,b)=>a.date.localeCompare(b.date)).slice(0,4);
+  const upcoming = tasks.filter(task=>Boolean(task.date)&&task.status!=="done").sort((a,b)=>a.date.localeCompare(b.date)).slice(0,4);
   return <><div className="mini-week">{"一二三四五六日".split("").map(day=><span key={day}>{day}</span>)}</div><div className="mini-calendar-grid">{days.map((day,index)=>day===null?<span className="blank" key={`blank-${index}`}/>:<button className={day===13?"today":""} key={day} onClick={()=>{const task=tasks.find(item=>Number(item.date.slice(-2))===day);if(task)toggle(task.id)}}><b>{day}</b>{tasks.some(task=>Number(task.date.slice(-2))===day)&&<i/>}</button>)}</div><div className="upcoming"><div className="upcoming-title"><b>近期任务</b><span>{upcoming.length} 项</span></div>{upcoming.length===0?<p>暂时没有待办任务</p>:upcoming.map(task=><button key={task.id} onClick={()=>toggle(task.id)}><time>{Number(task.date.slice(-2))}<small>8月</small></time><span><b>{task.title}</b><small>{statusLabel[task.status]} · {task.priority}优先级</small></span></button>)}</div></>
 }
 
-function dateText(d:string){ const n=Number(d.slice(-2)); return n===13?"今天":n===14?"明天":`8月${n}日`; }
+function dateText(d:string){ if(!d)return "无截止日期"; const n=Number(d.slice(-2)); return n===13?"今天":n===14?"明天":`8月${n}日`; }
 
 function Icon({name}:{name:string}) { const paths:Record<string,React.ReactNode>={home:<><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5M9 21v-7h6v7"/></>,target:<><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></>,users:<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,plus:<path d="M12 5v14M5 12h14"/>,moon:<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/>,sun:<><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"/></>,bell:<><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></>,list:<><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></>,board:<><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="12" rx="1"/></>,calendar:<><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></>}; return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{paths[name]}</svg> }
