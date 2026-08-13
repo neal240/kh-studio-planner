@@ -1427,6 +1427,7 @@ function TaskList({
   viewNote: (task: Task) => void;
 }) {
   const [openMenu, setOpenMenu] = useState<number | string | null>(null);
+  const [openStatusMenu, setOpenStatusMenu] = useState<number | string | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const groups = [
     ...subGoals.filter((sub) => tasks.some((task) => task.subGoalId === sub.id)).map((sub) => ({ id: sub.id, title: sub.title, tasks: tasks.filter((task) => task.subGoalId === sub.id) })),
@@ -1437,17 +1438,48 @@ function TaskList({
       <button className={`check ${t.status === "done" ? "checked" : ""}`} onClick={() => toggle(t.id)} aria-label={t.status === "done" ? "取消完成" : "标记完成"}>{t.status === "done" && "✓"}</button>
       <div className="task-main"><h3 className={t.status === "done" ? "done" : ""}>{t.title}</h3>{t.description && <button className="task-note" onClick={() => viewNote(t)}>{t.description}</button>}<div className="meta"><span className={`priority p-${t.priority}`}>{t.priority}优先级</span><span><Icon name="calendar" />{dateText(t.date)}</span>{t.goalId && <span><Icon name="target" />Demo 大目标</span>}</div></div>
       <div className="assignees">{t.assignees.map((a, i) => <span className={`face f${members.indexOf(a)}`} key={a} style={{ zIndex: 4 - i }}>{a[0]}</span>)}</div>
-      <select
-        className={`status status-select s-${t.status}`}
-        value={t.status}
-        onChange={(event) => changeStatus(t.id, event.target.value as Status)}
-        aria-label={`修改“${t.title}”的状态`}
-      >
-        <option value="todo">待开始</option>
-        <option value="doing">进行中</option>
-        <option value="done">已完成</option>
-      </select>
-      <div className="task-actions"><button className="dots row-dots" onClick={() => setOpenMenu(openMenu === t.id ? null : t.id)} aria-label={`${t.title}的更多操作`}>•••</button>{openMenu === t.id && <><button className="task-menu-scrim" aria-label="关闭任务操作菜单" onClick={() => setOpenMenu(null)} /><div className="task-menu" role="menu"><button onClick={() => { setOpenMenu(null); edit(t); }}>编辑任务</button><button className="danger" onClick={() => { setOpenMenu(null); remove(t.id); }}>删除任务</button></div></>}</div>
+      <div className="status-control">
+        <button
+          type="button"
+          className={`status status-trigger s-${t.status}`}
+          onClick={() => {
+            setOpenMenu(null);
+            setOpenStatusMenu(openStatusMenu === t.id ? null : t.id);
+          }}
+          aria-label={`修改“${t.title}”的状态`}
+          aria-haspopup="menu"
+          aria-expanded={openStatusMenu === t.id}
+        >
+          <span className={`status-dot ${t.status}`} />
+          {statusLabel[t.status]}
+          <span className="status-chevron">⌄</span>
+        </button>
+        {openStatusMenu === t.id && (
+          <>
+            <button className="task-menu-scrim" aria-label="关闭状态菜单" onClick={() => setOpenStatusMenu(null)} />
+            <div className="status-menu" role="menu">
+              {(["todo", "doing", "done"] as Status[]).map((status) => (
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={t.status === status}
+                  className={t.status === status ? "selected" : ""}
+                  onClick={() => {
+                    changeStatus(t.id, status);
+                    setOpenStatusMenu(null);
+                  }}
+                  key={status}
+                >
+                  <span className={`status-dot ${status}`} />
+                  {statusLabel[status]}
+                  {t.status === status && <span className="status-check">✓</span>}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      <div className="task-actions"><button className="dots row-dots" onClick={() => { setOpenStatusMenu(null); setOpenMenu(openMenu === t.id ? null : t.id); }} aria-label={`${t.title}的更多操作`}>•••</button>{openMenu === t.id && <><button className="task-menu-scrim" aria-label="关闭任务操作菜单" onClick={() => setOpenMenu(null)} /><div className="task-menu" role="menu"><button onClick={() => { setOpenMenu(null); edit(t); }}>编辑任务</button><button className="danger" onClick={() => { setOpenMenu(null); remove(t.id); }}>删除任务</button></div></>}</div>
     </article>
   );
   return (

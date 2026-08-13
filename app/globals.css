@@ -690,13 +690,86 @@ header p {
 .row-dots {
   width: 25px;
 }
-.status-select {
-  border: 0;
-  border-radius: 7px;
-  padding: 5px 24px 5px 8px;
+.status-control {
+  position: relative;
+  flex-shrink: 0;
+}
+.status-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 88px;
+  border: 1px solid transparent;
   font: inherit;
   cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.status-trigger:hover,
+.status-trigger[aria-expanded="true"] {
+  border-color: color-mix(in srgb, currentColor 25%, transparent);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+.status-trigger:active {
+  transform: translateY(1px);
+}
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a9acb2;
+  flex: 0 0 7px;
+}
+.status-dot.doing {
+  background: #718de0;
+}
+.status-dot.done {
+  background: #65a274;
+}
+.status-chevron {
+  margin-left: auto;
+  color: currentColor;
+  opacity: 0.65;
+  font-size: 12px;
+  line-height: 1;
+}
+.status-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 9;
+  width: 142px;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.14);
+}
+.status-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.status-menu button:hover,
+.status-menu button:focus-visible,
+.status-menu button.selected {
+  background: var(--panel-2);
   outline: none;
+}
+.status-check {
+  margin-left: auto;
+  font-weight: 700;
 }
 .board {
   display: grid;
