@@ -9,6 +9,9 @@ create table if not exists public.members (
   joined_at timestamptz not null default now()
 );
 
+alter table public.members add column if not exists auth_user_id uuid unique;
+alter table public.members add column if not exists email text;
+
 create table if not exists public.invite_codes (
   id uuid primary key default gen_random_uuid(),
   code text not null unique,
@@ -70,6 +73,30 @@ begin
     update public.members set name=trim(display_name), session_token_hash=encode(extensions.digest(v_token,'sha256'),'hex') where id=v_member.id returning * into v_member;
   else
     insert into public.members(name, role, session_token_hash) values(trim(display_name),'member',encode(extensions.digest(v_token,'sha256'),'hex')) returning * into v_member;
+  end if;
+  update public.invite_codes set uses=uses+1 where id=v_invite.id;
+  return jsonb_build_object('session_token',v_token,'member_name',v_member.name,'role',v_member.role);
+end $$;
+
+create or replace function public.join_with_verified_email(invite_code text, display_name text)
+returns jsonb language plpgsql security definer set search_path=public,auth,extensions as $$
+declare v_uid uuid; v_email text; v_invite public.invite_codes; v_token text; v_member public.members;
+begin
+  v_uid := auth.uid(); v_email := auth.jwt()->>'email';
+  if v_uid is null or v_email is null then raise exception '请先完成邮箱验证'; end if;
+  select * into v_member from public.members where auth_user_id=v_uid for update;
+  v_token := encode(extensions.gen_random_bytes(32),'hex');
+  if v_member.id is not null then
+    update public.members set session_token_hash=encode(extensions.digest(v_token,'sha256'),'hex') where id=v_member.id returning * into v_member;
+    return jsonb_build_object('session_token',v_token,'member_name',v_member.name,'role',v_member.role);
+  end if;
+  select * into v_invite from public.invite_codes where upper(code)=upper(trim(invite_code)) for update;
+  if v_invite.id is null or not v_invite.active or v_invite.expires_at<=now() or v_invite.uses>=v_invite.max_uses then raise exception '邀请码无效、已过期或次数已用完'; end if;
+  select * into v_member from public.members where role='admin' and auth_user_id is null order by joined_at limit 1 for update;
+  if v_member.id is not null then
+    update public.members set name=trim(display_name),email=lower(v_email),auth_user_id=v_uid,session_token_hash=encode(extensions.digest(v_token,'sha256'),'hex') where id=v_member.id returning * into v_member;
+  else
+    insert into public.members(name,role,email,auth_user_id,session_token_hash) values(trim(display_name),'member',lower(v_email),v_uid,encode(extensions.digest(v_token,'sha256'),'hex')) returning * into v_member;
   end if;
   update public.invite_codes set uses=uses+1 where id=v_invite.id;
   return jsonb_build_object('session_token',v_token,'member_name',v_member.name,'role',v_member.role);
@@ -140,6 +167,7 @@ begin
 end $$;
 
 grant execute on function public.redeem_invite(text,text) to anon;
+grant execute on function public.join_with_verified_email(text,text) to authenticated;
 grant execute on function public.get_workspace_snapshot(text) to anon;
 grant execute on function public.create_planner_task(text,text,timestamptz,text,uuid,uuid[]) to anon;
 grant execute on function public.set_planner_task_status(text,uuid,text) to anon;

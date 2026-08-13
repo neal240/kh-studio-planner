@@ -13,3 +13,4 @@
 @media(max-width:750px){.goal-grid{grid-template-columns:1fr}.member-row time{display:none}}
 .no-current-goal{display:flex;align-items:center;justify-content:space-between}.no-current-goal h2{margin:13px 0 7px}
 .member-pills button.selected{background:var(--black);color:var(--panel);border-color:var(--black);box-shadow:0 0 0 2px color-mix(in srgb,var(--black) 12%,transparent)}
+.text-button{width:100%;border:0;background:transparent;color:var(--sub);font-size:11px;margin-top:12px;cursor:pointer}
