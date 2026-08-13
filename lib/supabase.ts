@@ -24,7 +24,7 @@ export type WorkspaceSnapshot = {
   members: Array<{ id: string; name: string; role: "admin" | "member"; joined_at: string }>;
   goals: Array<{ id: string; title: string; description: string; due_at: string | null }>;
   tasks: Array<{
-    id: string; title: string; status: "todo" | "doing" | "done";
+    id: string; title: string; description: string; status: "todo" | "doing" | "done";
     priority: "high" | "medium" | "low"; due_at: string | null;
     goal_id: string | null; assignees: string[];
   }>;
@@ -37,11 +37,11 @@ export const plannerApi = {
   snapshot: (token: string) => request<WorkspaceSnapshot>("rpc/get_workspace_snapshot", {
     method: "POST", body: JSON.stringify({ session_token: token }),
   }),
-  createTask: (token: string, task: { title: string; dueAt?: string; priority?: string; goalId?: string; assignees?: string[] }) => request<{ id: string }>("rpc/create_planner_task", {
-    method: "POST", body: JSON.stringify({ session_token: token, task_title: task.title, due_at: task.dueAt ?? null, task_priority: task.priority ?? "medium", goal_id: task.goalId ?? null, assignee_ids: task.assignees ?? [] }),
+  createTask: (token: string, task: { title: string; description?: string; dueAt?: string; priority?: string; goalId?: string; assignees?: string[] }) => request<{ id: string }>("rpc/create_planner_task", {
+    method: "POST", body: JSON.stringify({ session_token: token, task_title: task.title, due_at: task.dueAt ?? null, task_priority: task.priority ?? "medium", goal_id: task.goalId ?? null, assignee_ids: task.assignees ?? [], task_description: task.description ?? "" }),
   }),
-  updateTask: (token: string, taskId: string, task: { title: string; dueAt?: string; priority?: string; goalId?: string; assignees?: string[] }) => request<void>("rpc/update_planner_task", {
-    method: "POST", body: JSON.stringify({ session_token: token, task_id: taskId, task_title: task.title, due_at: task.dueAt ?? null, task_priority: task.priority ?? "medium", goal_id: task.goalId ?? null, assignee_ids: task.assignees ?? [] }),
+  updateTask: (token: string, taskId: string, task: { title: string; description?: string; dueAt?: string; priority?: string; goalId?: string; assignees?: string[] }) => request<void>("rpc/update_planner_task", {
+    method: "POST", body: JSON.stringify({ session_token: token, task_id: taskId, task_title: task.title, due_at: task.dueAt ?? null, task_priority: task.priority ?? "medium", goal_id: task.goalId ?? null, assignee_ids: task.assignees ?? [], task_description: task.description ?? "" }),
   }),
   setTaskStatus: (token: string, taskId: string, status: "todo" | "doing" | "done") => request<void>("rpc/set_planner_task_status", {
     method: "POST", body: JSON.stringify({ session_token: token, task_id: taskId, new_status: status }),

@@ -9,7 +9,7 @@ type View = "list" | "board" | "calendar";
 type Section = "workspace" | "goals" | "members";
 type Goal = { id: string; title: string; description: string; dueAt: string | null };
 type TeamMember = { id: string; name: string; role: "admin" | "member"; joinedAt: string };
-type Task = { id: number | string; title: string; status: Status; date: string; priority: "高" | "中" | "低"; assignees: string[]; goalId?: number | string };
+type Task = { id: number | string; title: string; description?: string; status: Status; date: string; priority: "高" | "中" | "低"; assignees: string[]; goalId?: number | string };
 
 const initialTasks: Task[] = [
   { id: 1, title: "确认序章关卡流程", status: "done", date: "2026-08-12", priority: "高", assignees: ["林野", "阿澈"], goalId: 1 },
@@ -53,11 +53,22 @@ export default function Home() {
     const saved = localStorage.getItem("kh_planner_session");
     if (!saved || !supabaseConfigured) return;
     setSession(saved);
-    loadWorkspace(saved).catch(() => {
-      localStorage.removeItem("kh_planner_session");
-      setSession(null);
-    });
+    restoreWorkspace(saved);
   }, []);
+
+  async function restoreWorkspace(token: string) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try { await loadWorkspace(token); return; }
+      catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (/会话已失效|session.*invalid|unauthorized/i.test(message)) {
+          localStorage.removeItem("kh_planner_session"); setSession(null); return;
+        }
+        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 700 * (attempt + 1)));
+      }
+    }
+    setToast("网络暂时不可用，登录状态已保留");
+  }
 
   async function loadWorkspace(token: string) {
     const data = await plannerApi.snapshot(token);
@@ -68,6 +79,7 @@ export default function Home() {
     setTasks(data.tasks.map(t => ({
         id: t.id,
         title: t.title,
+        description: t.description || "",
         status: t.status,
         date: t.due_at?.slice(0, 10) || "",
         priority: t.priority === "high" ? "高" : t.priority === "low" ? "低" : "中",
@@ -137,15 +149,16 @@ export default function Home() {
     e.preventDefault(); if (!title.trim()) return;
     const form = new FormData(e.currentTarget as HTMLFormElement);
     const taskTitle = title.trim();
+    const description = String(form.get("description") || "").trim();
     const dueAt = taskHasDueDate ? String(form.get("dueAt") || "") : "";
     const priorityLabel = String(form.get("priority")) as "高"|"中"|"低";
     const includeGoal = form.get("includeGoal") === "on";
     const selectedNames = team.filter(m=>selectedAssignees.includes(m.id)).map(m=>m.name);
-    setTasks(ts => [...ts, { id: Date.now(), title: taskTitle, status: "todo", date: dueAt, priority: priorityLabel, assignees: selectedNames, goalId: includeGoal ? currentGoal?.id : undefined }]);
+    setTasks(ts => [...ts, { id: Date.now(), title: taskTitle, description, status: "todo", date: dueAt, priority: priorityLabel, assignees: selectedNames, goalId: includeGoal ? currentGoal?.id : undefined }]);
     setTitle(""); setModal(null); setToast("任务已加入大目标");
     if (session) {
       try {
-        await plannerApi.createTask(session, { title: taskTitle, dueAt: dueAt || undefined, priority: priorityLabel==="高"?"high":priorityLabel==="低"?"low":"medium", goalId: includeGoal?currentGoal?.id:undefined, assignees:selectedAssignees });
+        await plannerApi.createTask(session, { title: taskTitle, description, dueAt: dueAt || undefined, priority: priorityLabel==="高"?"high":priorityLabel==="低"?"low":"medium", goalId: includeGoal?currentGoal?.id:undefined, assignees:selectedAssignees });
         await loadWorkspace(session);
       } catch {
         setToast("任务保存在本机，但云端同步失败");
@@ -171,16 +184,17 @@ export default function Home() {
     if (!editingTask) return addTask(e);
     e.preventDefault(); if (!title.trim()) return;
     const form = new FormData(e.currentTarget as HTMLFormElement);
+    const description = String(form.get("description") || "").trim();
     const dueAt = taskHasDueDate ? String(form.get("dueAt") || "") : "";
     const priority = String(form.get("priority")) as Task["priority"];
     const includeGoal = form.get("includeGoal") === "on";
     const assignees = team.length ? team.filter(member => selectedAssignees.includes(member.id)).map(member => member.name) : editingTask.assignees;
-    const updated: Task = {...editingTask, title:title.trim(), date:dueAt, priority, assignees, goalId:includeGoal ? currentGoal?.id : undefined};
+    const updated: Task = {...editingTask, title:title.trim(), description, date:dueAt, priority, assignees, goalId:includeGoal ? currentGoal?.id : undefined};
     setTasks(items => items.map(task => task.id === updated.id ? updated : task));
     setModal(null); setEditingTask(null); setTitle(""); setToast("任务已更新");
     if (session && typeof updated.id === "string") {
       try {
-        await plannerApi.updateTask(session, updated.id, {title:updated.title, dueAt:dueAt || undefined, priority:priority === "高" ? "high" : priority === "低" ? "low" : "medium", goalId:includeGoal ? currentGoal?.id : undefined, assignees:selectedAssignees});
+        await plannerApi.updateTask(session, updated.id, {title:updated.title, description, dueAt:dueAt || undefined, priority:priority === "高" ? "high" : priority === "低" ? "low" : "medium", goalId:includeGoal ? currentGoal?.id : undefined, assignees:selectedAssignees});
         await loadWorkspace(session);
       } catch { setToast("更新失败，任务已恢复"); await loadWorkspace(session); }
     }
@@ -239,7 +253,7 @@ export default function Home() {
         </section></div><aside className="workspace-calendar" aria-label="任务日历"><div className="side-calendar-head"><div><span className="goal-tag">日程概览</span><h2>2026 年 8 月</h2></div><button className="calendar-link" onClick={()=>setView("calendar")}>查看日历</button></div><DashboardCalendar tasks={tasks} toggle={toggleTask}/></aside></div></>}
       </section>
 
-      {modal === "task" && <div className="overlay" onMouseDown={()=>{setModal(null);setEditingTask(null)}}><form key={editingTask?.id ?? "new"} className="modal" onSubmit={saveTask} onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="goal-tag">{editingTask?"编辑任务":"新任务"}</span><h2>{editingTask?"修改任务信息":"要推进什么事情？"}</h2></div><button type="button" aria-label="关闭" onClick={()=>{setModal(null);setEditingTask(null)}}>×</button></div><label>任务名称<input autoFocus value={title} onChange={e=>setTitle(e.target.value)} placeholder="例如：完成登录页面设计"/></label><div className="due-mode"><button type="button" className={taskHasDueDate?"selected":""} onClick={()=>setTaskHasDueDate(true)}>设置截止日期</button><button type="button" className={!taskHasDueDate?"selected":""} onClick={()=>setTaskHasDueDate(false)}>无截止日期</button></div><div className="form-grid"><label>截止日期<input name="dueAt" type="date" disabled={!taskHasDueDate} defaultValue={editingTask?.date || "2026-08-22"}/></label><label>优先级<select name="priority" defaultValue={editingTask?.priority ?? "中"}><option>高</option><option>中</option><option>低</option></select></label></div><label>负责人<div className="member-pills">{team.map(m=><button type="button" className={selectedAssignees.includes(m.id)?"selected":""} onClick={()=>setSelectedAssignees(ids=>ids.includes(m.id)?ids.filter(id=>id!==m.id):[...ids,m.id])} key={m.id}>{m.name[0]} {m.name}</button>)}</div></label><label className="goal-check"><input name="includeGoal" type="checkbox" defaultChecked={editingTask ? Boolean(editingTask.goalId) : true} disabled={!currentGoal}/>{currentGoal?`计入“${currentGoal.title}”进度`:"当前没有可关联的大目标"}</label><button className="primary submit">{editingTask?"保存修改":"创建任务"}</button></form></div>}
+      {modal === "task" && <div className="overlay" onMouseDown={()=>{setModal(null);setEditingTask(null)}}><form key={editingTask?.id ?? "new"} className="modal" onSubmit={saveTask} onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="goal-tag">{editingTask?"编辑任务":"新任务"}</span><h2>{editingTask?"修改任务信息":"要推进什么事情？"}</h2></div><button type="button" aria-label="关闭" onClick={()=>{setModal(null);setEditingTask(null)}}>×</button></div><label>任务名称<input autoFocus value={title} onChange={e=>setTitle(e.target.value)} placeholder="例如：完成登录页面设计"/></label><label>备注（可选）<textarea name="description" defaultValue={editingTask?.description || ""} maxLength={500} placeholder="补充任务要求、相关链接或注意事项"/></label><div className="due-mode"><button type="button" className={taskHasDueDate?"selected":""} onClick={()=>setTaskHasDueDate(true)}>设置截止日期</button><button type="button" className={!taskHasDueDate?"selected":""} onClick={()=>setTaskHasDueDate(false)}>无截止日期</button></div><div className="form-grid"><label>截止日期<input name="dueAt" type="date" disabled={!taskHasDueDate} defaultValue={editingTask?.date || "2026-08-22"}/></label><label>优先级<select name="priority" defaultValue={editingTask?.priority ?? "中"}><option>高</option><option>中</option><option>低</option></select></label></div><label>负责人<div className="member-pills">{team.map(m=><button type="button" className={selectedAssignees.includes(m.id)?"selected":""} onClick={()=>setSelectedAssignees(ids=>ids.includes(m.id)?ids.filter(id=>id!==m.id):[...ids,m.id])} key={m.id}>{m.name[0]} {m.name}</button>)}</div></label><label className="goal-check"><input name="includeGoal" type="checkbox" defaultChecked={editingTask ? Boolean(editingTask.goalId) : true} disabled={!currentGoal}/>{currentGoal?`计入“${currentGoal.title}”进度`:"当前没有可关联的大目标"}</label><button className="primary submit">{editingTask?"保存修改":"创建任务"}</button></form></div>}
       {modal === "invite" && <div className="overlay" onMouseDown={()=>setModal(null)}><div className="modal invite" onMouseDown={e=>e.stopPropagation()}><div className="invite-icon"><Icon name="users"/></div><h2>邀请新成员</h2><p>把邀请码发给同事。对方输入名字，就能加入工作室。</p><div className="code"><span>KHKH-0826</span><button onClick={()=>{navigator.clipboard?.writeText("KHKH-0826");setToast("邀请码已复制")}}>复制</button></div><small>邀请码将在 7 天后失效 · 最多使用 10 次</small><button className="primary submit" onClick={()=>setModal(null)}>完成</button></div></div>}
       {goalModal && <div className="overlay" onMouseDown={()=>setGoalModal(false)}><form className="modal" onSubmit={addGoal} onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="goal-tag">新目标</span><h2>立一个大目标</h2></div><button type="button" onClick={()=>setGoalModal(false)}>×</button></div><label>目标名称<input name="title" required placeholder="例如：发布第一版 Demo"/></label><label>目标说明<input name="description" placeholder="一句话描述成功标准"/></label><label>截止日期<input name="dueAt" type="date"/></label><button className="primary submit">创建大目标</button></form></div>}
       {toast && <div className="toast"><span>✓</span>{toast}</div>}
