@@ -105,6 +105,22 @@ const statusLabel: Record<Status, string> = {
   done: "已完成",
 };
 
+function getHeaderCopy(now: Date) {
+  const hour = now.getHours();
+  const date = `${new Intl.DateTimeFormat("zh-CN", { weekday: "long" }).format(now)}，${now.getMonth() + 1}月${now.getDate()}日`;
+
+  if (hour >= 1 && hour < 6) {
+    return { date, greeting: "凌晨好", subtitle: "还在熬夜？" };
+  }
+  if (hour < 12) {
+    return { date, greeting: "早上好", subtitle: "今天也一起把重要的事情向前推一点。" };
+  }
+  if (hour < 18) {
+    return { date, greeting: "下午好", subtitle: "下午也继续把重要的事情向前推一点。" };
+  }
+  return { date, greeting: "晚上好", subtitle: "辛苦一天了，也别忘了适当休息。" };
+}
+
 export default function Home() {
   const [view, setView] = useState<View>("list");
   const [section, setSection] = useState<Section>("workspace");
@@ -137,10 +153,16 @@ export default function Home() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [viewingTask, setViewingTask] = useState<Task | null>(null);
   const [connectionState, setConnectionState] = useState<"loading" | "online" | "offline">("loading");
+  const [now, setNow] = useState(() => new Date());
+  const headerCopy = getHeaderCopy(now);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(""), 2600);
@@ -653,9 +675,9 @@ export default function Home() {
           <>
             <header>
               <div>
-                <p className="eyebrow">星期四，8月13日</p>
-                <h1>早上好，{currentName}</h1>
-                <p>今天也一起把重要的事情向前推一点。</p>
+                <p className="eyebrow">{headerCopy.date}</p>
+                <h1>{headerCopy.greeting}，{currentName}</h1>
+                <p>{headerCopy.subtitle}</p>
               </div>
               <div className="header-actions">
                 <span className={`connection-badge ${connectionState}`}>{connectionState === "online" ? "已同步" : connectionState === "offline" ? "离线 · 正在重连" : "正在同步"}</span>
