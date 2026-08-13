@@ -35,6 +35,8 @@ export default function Home() {
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState("");
   const [currentName, setCurrentName] = useState("林野");
+  const [currentMemberId, setCurrentMemberId] = useState("");
+  const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [goalModal, setGoalModal] = useState(false);
@@ -54,6 +56,7 @@ export default function Home() {
   async function loadWorkspace(token: string) {
     const data = await plannerApi.snapshot(token);
     setCurrentName(data.member.name);
+    setCurrentMemberId(data.member.id);
     setGoals(data.goals.map(g => ({ id:g.id, title:g.title, description:g.description, dueAt:g.due_at })));
     setTeam(data.members.map(m => ({ id:m.id, name:m.name, role:m.role, joinedAt:m.joined_at })));
     setTasks(data.tasks.map(t => ({
@@ -62,7 +65,7 @@ export default function Home() {
         status: t.status,
         date: t.due_at?.slice(0, 10) || "2026-08-22",
         priority: t.priority === "high" ? "高" : t.priority === "low" ? "低" : "中",
-        assignees: t.assignees,
+        assignees: t.assignees.map(id => data.members.find(m => m.id === id)?.name || "未知成员"),
         goalId: t.goal_id || undefined,
       })));
   }
@@ -91,7 +94,7 @@ export default function Home() {
   const done = goalTasks.filter(t => t.status === "done").length;
   const progress = goalTasks.length ? Math.round(done / goalTasks.length * 100) : 0;
   const daysLeft = currentGoal?.dueAt ? Math.max(0, Math.ceil((new Date(currentGoal.dueAt).getTime() - Date.now()) / 86400000)) : null;
-  const visible = filter === "我负责的" ? tasks.filter(t => t.assignees.includes("林野")) : filter === "即将到期" ? tasks.filter(t => t.date <= "2026-08-15" && t.status !== "done") : tasks;
+  const visible = filter === "我负责的" ? tasks.filter(t => t.assignees.includes(currentName)) : filter === "即将到期" ? tasks.filter(t => t.date <= "2026-08-15" && t.status !== "done") : tasks;
 
   function toggleTask(id: number | string) {
     const task = tasks.find(t => t.id === id);
@@ -116,12 +119,17 @@ export default function Home() {
   }
   async function addTask(e: React.FormEvent) {
     e.preventDefault(); if (!title.trim()) return;
+    const form = new FormData(e.currentTarget as HTMLFormElement);
     const taskTitle = title.trim();
-    setTasks(ts => [...ts, { id: Date.now(), title: taskTitle, status: "todo", date: "2026-08-22", priority: "中", assignees: [currentName], goalId: currentGoal?.id }]);
+    const dueAt = String(form.get("dueAt"));
+    const priorityLabel = String(form.get("priority")) as "高"|"中"|"低";
+    const includeGoal = form.get("includeGoal") === "on";
+    const selectedNames = team.filter(m=>selectedAssignees.includes(m.id)).map(m=>m.name);
+    setTasks(ts => [...ts, { id: Date.now(), title: taskTitle, status: "todo", date: dueAt, priority: priorityLabel, assignees: selectedNames, goalId: includeGoal ? currentGoal?.id : undefined }]);
     setTitle(""); setModal(null); setToast("任务已加入大目标");
     if (session) {
       try {
-        await plannerApi.createTask(session, { title: taskTitle, dueAt: "2026-08-22", priority: "medium", goalId: currentGoal?.id });
+        await plannerApi.createTask(session, { title: taskTitle, dueAt, priority: priorityLabel==="高"?"high":priorityLabel==="低"?"low":"medium", goalId: includeGoal?currentGoal?.id:undefined, assignees:selectedAssignees });
         await loadWorkspace(session);
       } catch {
         setToast("任务保存在本机，但云端同步失败");
@@ -163,7 +171,7 @@ export default function Home() {
 
       <section className="content">
         {section === "goals" ? <GoalsPage goals={goals} tasks={tasks} add={()=>setGoalModal(true)} remove={deleteGoal}/> : section === "members" ? <MembersPage members={team} invite={()=>setModal("invite")}/> : <>
-        <header><div><p className="eyebrow">星期四，8月13日</p><h1>早上好，{currentName}</h1><p>今天也一起把重要的事情向前推一点。</p></div><div className="header-actions"><button className="icon-btn" onClick={() => setToast("浏览器提醒已开启")} aria-label="开启提醒"><Icon name="bell"/><i/></button><button className="primary" onClick={() => setModal("task")}><Icon name="plus"/>新建任务</button></div></header>
+        <header><div><p className="eyebrow">星期四，8月13日</p><h1>早上好，{currentName}</h1><p>今天也一起把重要的事情向前推一点。</p></div><div className="header-actions"><button className="icon-btn" onClick={() => setToast("浏览器提醒已开启")} aria-label="开启提醒"><Icon name="bell"/><i/></button><button className="primary" onClick={() => {setSelectedAssignees(currentMemberId?[currentMemberId]:[]);setModal("task")}}><Icon name="plus"/>新建任务</button></div></header>
 
         {currentGoal ? <section className="goal-card">
           <div className="goal-top"><div><span className="goal-tag">当前大目标</span><h2>{currentGoal.title}</h2><p>{currentGoal.description || "暂未填写目标说明"}</p></div><button className="dots" onClick={()=>setSection("goals")}>•••</button></div>
@@ -181,7 +189,7 @@ export default function Home() {
         </section></>}
       </section>
 
-      {modal === "task" && <div className="overlay" onMouseDown={()=>setModal(null)}><form className="modal" onSubmit={addTask} onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="goal-tag">新任务</span><h2>要推进什么事情？</h2></div><button type="button" onClick={()=>setModal(null)}>×</button></div><label>任务名称<input autoFocus value={title} onChange={e=>setTitle(e.target.value)} placeholder="例如：完成登录页面设计"/></label><div className="form-grid"><label>截止日期<input type="date" defaultValue="2026-08-22"/></label><label>优先级<select defaultValue="中"><option>高</option><option>中</option><option>低</option></select></label></div><label>负责人<div className="member-pills">{members.map(m=><button type="button" key={m}>{m[0]} {m}</button>)}</div></label><label className="goal-check"><input type="checkbox" defaultChecked/>计入“做出可玩的游戏 Demo”进度</label><button className="primary submit">创建任务</button></form></div>}
+      {modal === "task" && <div className="overlay" onMouseDown={()=>setModal(null)}><form className="modal" onSubmit={addTask} onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="goal-tag">新任务</span><h2>要推进什么事情？</h2></div><button type="button" onClick={()=>setModal(null)}>×</button></div><label>任务名称<input autoFocus value={title} onChange={e=>setTitle(e.target.value)} placeholder="例如：完成登录页面设计"/></label><div className="form-grid"><label>截止日期<input name="dueAt" type="date" defaultValue="2026-08-22"/></label><label>优先级<select name="priority" defaultValue="中"><option>高</option><option>中</option><option>低</option></select></label></div><label>负责人<div className="member-pills">{team.map(m=><button type="button" className={selectedAssignees.includes(m.id)?"selected":""} onClick={()=>setSelectedAssignees(ids=>ids.includes(m.id)?ids.filter(id=>id!==m.id):[...ids,m.id])} key={m.id}>{m.name[0]} {m.name}</button>)}</div></label><label className="goal-check"><input name="includeGoal" type="checkbox" defaultChecked disabled={!currentGoal}/>{currentGoal?`计入“${currentGoal.title}”进度`:"当前没有可关联的大目标"}</label><button className="primary submit">创建任务</button></form></div>}
       {modal === "invite" && <div className="overlay" onMouseDown={()=>setModal(null)}><div className="modal invite" onMouseDown={e=>e.stopPropagation()}><div className="invite-icon"><Icon name="users"/></div><h2>邀请新成员</h2><p>把邀请码发给同事。对方输入名字，就能加入工作室。</p><div className="code"><span>KHKH-0826</span><button onClick={()=>{navigator.clipboard?.writeText("KHKH-0826");setToast("邀请码已复制")}}>复制</button></div><small>邀请码将在 7 天后失效 · 最多使用 10 次</small><button className="primary submit" onClick={()=>setModal(null)}>完成</button></div></div>}
       {goalModal && <div className="overlay" onMouseDown={()=>setGoalModal(false)}><form className="modal" onSubmit={addGoal} onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="goal-tag">新目标</span><h2>立一个大目标</h2></div><button type="button" onClick={()=>setGoalModal(false)}>×</button></div><label>目标名称<input name="title" required placeholder="例如：发布第一版 Demo"/></label><label>目标说明<input name="description" placeholder="一句话描述成功标准"/></label><label>截止日期<input name="dueAt" type="date"/></label><button className="primary submit">创建大目标</button></form></div>}
       {toast && <div className="toast"><span>✓</span>{toast}</div>}
