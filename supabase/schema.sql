@@ -88,6 +88,7 @@ begin
   if me.id is null then raise exception '会话已失效'; end if;
   return jsonb_build_object(
     'member', jsonb_build_object('id',me.id,'name',me.name,'role',me.role),
+    'members', coalesce((select jsonb_agg(jsonb_build_object('id',m.id,'name',m.name,'role',m.role,'joined_at',m.joined_at) order by m.joined_at) from public.members m),'[]'::jsonb),
     'goals', coalesce((select jsonb_agg(to_jsonb(g) order by g.created_at) from public.goals g),'[]'::jsonb),
     'tasks', coalesce((select jsonb_agg(to_jsonb(t) || jsonb_build_object('assignees',coalesce((select jsonb_agg(ta.member_id) from public.task_assignees ta where ta.task_id=t.id),'[]'::jsonb)) order by t.created_at desc) from public.tasks t),'[]'::jsonb)
   );
@@ -113,10 +114,38 @@ begin
   update public.tasks set status=new_status, completed_at=case when new_status='done' then now() else null end where id=task_id;
 end $$;
 
+create or replace function public.delete_planner_task(session_token text, task_id uuid)
+returns void language plpgsql security definer set search_path=public as $$
+declare me public.members;
+begin
+  select * into me from public.member_for_token(session_token);
+  if me.id is null then raise exception '会话已失效'; end if;
+  delete from public.tasks where id=task_id;
+end $$;
+
+create or replace function public.create_planner_goal(session_token text, goal_title text, goal_description text default '', due_at timestamptz default null)
+returns jsonb language plpgsql security definer set search_path=public as $$
+declare me public.members; new_goal public.goals;
+begin
+  select * into me from public.member_for_token(session_token); if me.id is null then raise exception '会话已失效'; end if;
+  insert into public.goals(title,description,due_at,created_by) values(trim(goal_title),trim(goal_description),due_at,me.id) returning * into new_goal;
+  return jsonb_build_object('id',new_goal.id);
+end $$;
+
+create or replace function public.delete_planner_goal(session_token text, goal_id uuid)
+returns void language plpgsql security definer set search_path=public as $$
+declare me public.members;
+begin
+  select * into me from public.member_for_token(session_token); if me.id is null then raise exception '会话已失效'; end if; delete from public.goals where id=goal_id;
+end $$;
+
 grant execute on function public.redeem_invite(text,text) to anon;
 grant execute on function public.get_workspace_snapshot(text) to anon;
 grant execute on function public.create_planner_task(text,text,timestamptz,text,uuid,uuid[]) to anon;
 grant execute on function public.set_planner_task_status(text,uuid,text) to anon;
+grant execute on function public.delete_planner_task(text,uuid) to anon;
+grant execute on function public.create_planner_goal(text,text,text,timestamptz) to anon;
+grant execute on function public.delete_planner_goal(text,uuid) to anon;
 
 -- 首位管理员与首个邀请码。管理员的临时会话令牌请在首次正式登录流程完成后轮换。
 do $$ declare admin_id uuid; begin

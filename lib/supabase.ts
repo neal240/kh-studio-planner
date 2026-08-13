@@ -21,6 +21,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export type WorkspaceSnapshot = {
   member: { id: string; name: string; role: "admin" | "member" };
+  members: Array<{ id: string; name: string; role: "admin" | "member"; joined_at: string }>;
   goals: Array<{ id: string; title: string; description: string; due_at: string | null }>;
   tasks: Array<{
     id: string; title: string; status: "todo" | "doing" | "done";
@@ -41,5 +42,14 @@ export const plannerApi = {
   }),
   setTaskStatus: (token: string, taskId: string, status: "todo" | "doing" | "done") => request<void>("rpc/set_planner_task_status", {
     method: "POST", body: JSON.stringify({ session_token: token, task_id: taskId, new_status: status }),
+  }),
+  deleteTask: (token: string, taskId: string) => request<void>("rpc/delete_planner_task", {
+    method: "POST", body: JSON.stringify({ session_token: token, task_id: taskId }),
+  }),
+  createGoal: (token: string, title: string, description: string, dueAt?: string) => request<{ id: string }>("rpc/create_planner_goal", {
+    method: "POST", body: JSON.stringify({ session_token: token, goal_title: title, goal_description: description, due_at: dueAt || null }),
+  }),
+  deleteGoal: (token: string, goalId: string) => request<void>("rpc/delete_planner_goal", {
+    method: "POST", body: JSON.stringify({ session_token: token, goal_id: goalId }),
   }),
 };
