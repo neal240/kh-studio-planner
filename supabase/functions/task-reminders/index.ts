@@ -24,7 +24,7 @@ Deno.serve(async (request) => {
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   const now = new Date();
-  const upper = new Date(now.getTime() + 30 * 60 * 60 * 1000);
+  const upper = new Date(now.getTime() + 78 * 60 * 60 * 1000);
   const overdueLower = new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000);
   const { data, error } = await admin.from("tasks")
     .select("id,title,due_at,task_assignees(members(id,name,email))")
@@ -38,7 +38,8 @@ Deno.serve(async (request) => {
     const hours = (due.getTime() - now.getTime()) / 3600000;
     let kind: string | null = null;
     let label = "";
-    if (hours > 18 && hours <= 30) { kind = "due_24h"; label = "将在约 24 小时后截止"; }
+    if (hours > 66 && hours <= 78) { kind = "due_3d"; label = "将在约 3 天后截止"; }
+    else if (hours > 18 && hours <= 30) { kind = "due_24h"; label = "将在约 24 小时后截止"; }
     else if (hours >= 0 && hours <= 18) { kind = "due_today"; label = "今天截止"; }
     else if (hours < 0) {
       const day = Math.min(3, Math.max(1, Math.ceil(Math.abs(hours) / 24)));

@@ -54,7 +54,7 @@ create table if not exists public.reminder_deliveries (
   id uuid primary key default gen_random_uuid(),
   task_id uuid not null references public.tasks(id) on delete cascade,
   member_id uuid not null references public.members(id) on delete cascade,
-  reminder_kind text not null check (reminder_kind in ('due_24h','due_today','overdue_1','overdue_2','overdue_3')),
+  reminder_kind text not null check (reminder_kind in ('due_3d','due_24h','due_today','overdue_1','overdue_2','overdue_3')),
   provider_id text,
   sent_at timestamptz not null default now(),
   unique(task_id, member_id, reminder_kind)
