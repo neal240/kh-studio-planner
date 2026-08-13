@@ -50,13 +50,25 @@ create table if not exists public.task_assignees (
   primary key (task_id, member_id)
 );
 
+create table if not exists public.reminder_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  member_id uuid not null references public.members(id) on delete cascade,
+  reminder_kind text not null check (reminder_kind in ('due_24h','due_today','overdue_1','overdue_2','overdue_3')),
+  provider_id text,
+  sent_at timestamptz not null default now(),
+  unique(task_id, member_id, reminder_kind)
+);
+
 alter table public.members enable row level security;
 alter table public.invite_codes enable row level security;
 alter table public.goals enable row level security;
 alter table public.tasks enable row level security;
 alter table public.task_assignees enable row level security;
+alter table public.reminder_deliveries enable row level security;
 
 revoke all on public.members, public.invite_codes, public.goals, public.tasks, public.task_assignees from anon, authenticated;
+revoke all on public.reminder_deliveries from anon, authenticated;
 
 create or replace function public.redeem_invite(invite_code text, display_name text)
 returns jsonb language plpgsql security definer set search_path = public as $$
