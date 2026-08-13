@@ -30,6 +30,8 @@ jobs:
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ZO6vnblcbMYNs3HFi53L3g_pb0Vh0_n
         run: npm run build:pages
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: pages-dist
