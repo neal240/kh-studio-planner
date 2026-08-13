@@ -43,6 +43,7 @@ export default function Home() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [goalModal, setGoalModal] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(""), 2600); return () => clearTimeout(t); }, [toast]);
@@ -147,6 +148,37 @@ export default function Home() {
     }
   }
 
+  function openNewTask() {
+    setEditingTask(null); setTitle("");
+    setSelectedAssignees(currentMemberId ? [currentMemberId] : []);
+    setModal("task");
+  }
+
+  function openEditTask(task: Task) {
+    setEditingTask(task); setTitle(task.title);
+    setSelectedAssignees(team.filter(member => task.assignees.includes(member.name)).map(member => member.id));
+    setModal("task");
+  }
+
+  async function saveTask(e: React.FormEvent) {
+    if (!editingTask) return addTask(e);
+    e.preventDefault(); if (!title.trim()) return;
+    const form = new FormData(e.currentTarget as HTMLFormElement);
+    const dueAt = String(form.get("dueAt"));
+    const priority = String(form.get("priority")) as Task["priority"];
+    const includeGoal = form.get("includeGoal") === "on";
+    const assignees = team.length ? team.filter(member => selectedAssignees.includes(member.id)).map(member => member.name) : editingTask.assignees;
+    const updated: Task = {...editingTask, title:title.trim(), date:dueAt, priority, assignees, goalId:includeGoal ? currentGoal?.id : undefined};
+    setTasks(items => items.map(task => task.id === updated.id ? updated : task));
+    setModal(null); setEditingTask(null); setTitle(""); setToast("任务已更新");
+    if (session && typeof updated.id === "string") {
+      try {
+        await plannerApi.updateTask(session, updated.id, {title:updated.title, dueAt, priority:priority === "高" ? "high" : priority === "低" ? "low" : "medium", goalId:includeGoal ? currentGoal?.id : undefined, assignees:selectedAssignees});
+        await loadWorkspace(session);
+      } catch { setToast("更新失败，任务已恢复"); await loadWorkspace(session); }
+    }
+  }
+
   async function addGoal(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); if (!session) return; const form = new FormData(e.currentTarget);
     try { await plannerApi.createGoal(session,String(form.get("title")),String(form.get("description")),String(form.get("dueAt"))); await loadWorkspace(session); setGoalModal(false); setToast("大目标已创建"); }
@@ -181,8 +213,9 @@ export default function Home() {
 
       <section className="content">
         {section === "goals" ? <GoalsPage goals={goals} tasks={tasks} add={()=>setGoalModal(true)} remove={deleteGoal}/> : section === "members" ? <MembersPage members={team} invite={()=>setModal("invite")}/> : <>
-        <header><div><p className="eyebrow">星期四，8月13日</p><h1>早上好，{currentName}</h1><p>今天也一起把重要的事情向前推一点。</p></div><div className="header-actions"><button className="icon-btn" onClick={() => setToast("浏览器提醒已开启")} aria-label="开启提醒"><Icon name="bell"/><i/></button><button className="primary" onClick={() => {setSelectedAssignees(currentMemberId?[currentMemberId]:[]);setModal("task")}}><Icon name="plus"/>新建任务</button></div></header>
+        <header><div><p className="eyebrow">星期四，8月13日</p><h1>早上好，{currentName}</h1><p>今天也一起把重要的事情向前推一点。</p></div><div className="header-actions"><button className="icon-btn" onClick={() => setToast("浏览器提醒已开启")} aria-label="开启提醒"><Icon name="bell"/><i/></button><button className="primary" onClick={openNewTask}><Icon name="plus"/>新建任务</button></div></header>
 
+        <div className="workspace-grid"><div className="workspace-main">
         {currentGoal ? <section className="goal-card">
           <div className="goal-top"><div><span className="goal-tag">当前大目标</span><h2>{currentGoal.title}</h2><p>{currentGoal.description || "暂未填写目标说明"}</p></div><button className="dots" onClick={()=>setSection("goals")}>•••</button></div>
           <div className="progress-row"><div className="progress-copy"><strong>{progress}%</strong><span>{done} / {goalTasks.length} 项完成</span></div><div className="progress"><span style={{width: `${progress}%`}}/></div><span className="deadline">{daysLeft===null?"未设截止日期":`还剩 ${daysLeft} 天`}</span></div>
@@ -193,13 +226,13 @@ export default function Home() {
           <div className="toolbar"><div><h2>任务</h2><span>{visible.filter(t => t.status !== "done").length} 项待完成</span></div><div className="view-switch">{(["list","board","calendar"] as View[]).map(v=><button key={v} className={view===v?"selected":""} onClick={()=>setView(v)}><Icon name={v}/>{v==="list"?"清单":v==="board"?"看板":"日历"}</button>)}</div></div>
           <div className="filters">{["全部任务","我负责的","即将到期"].map(f=><button className={filter===f?"active":""} onClick={()=>setFilter(f)} key={f}>{f}</button>)}</div>
 
-          {view === "list" && <TaskList tasks={visible} toggle={toggleTask} remove={deleteTask}/>} 
+          {view === "list" && <TaskList tasks={visible} toggle={toggleTask} edit={openEditTask} remove={deleteTask}/>}
           {view === "board" && <Board tasks={visible} toggle={toggleTask}/>} 
           {view === "calendar" && <Calendar tasks={visible} toggle={toggleTask}/>} 
-        </section></>}
+        </section></div><aside className="workspace-calendar" aria-label="任务日历"><div className="side-calendar-head"><div><span className="goal-tag">日程概览</span><h2>2026 年 8 月</h2></div><button className="calendar-link" onClick={()=>setView("calendar")}>查看日历</button></div><DashboardCalendar tasks={tasks} toggle={toggleTask}/></aside></div></>}
       </section>
 
-      {modal === "task" && <div className="overlay" onMouseDown={()=>setModal(null)}><form className="modal" onSubmit={addTask} onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="goal-tag">新任务</span><h2>要推进什么事情？</h2></div><button type="button" onClick={()=>setModal(null)}>×</button></div><label>任务名称<input autoFocus value={title} onChange={e=>setTitle(e.target.value)} placeholder="例如：完成登录页面设计"/></label><div className="form-grid"><label>截止日期<input name="dueAt" type="date" defaultValue="2026-08-22"/></label><label>优先级<select name="priority" defaultValue="中"><option>高</option><option>中</option><option>低</option></select></label></div><label>负责人<div className="member-pills">{team.map(m=><button type="button" className={selectedAssignees.includes(m.id)?"selected":""} onClick={()=>setSelectedAssignees(ids=>ids.includes(m.id)?ids.filter(id=>id!==m.id):[...ids,m.id])} key={m.id}>{m.name[0]} {m.name}</button>)}</div></label><label className="goal-check"><input name="includeGoal" type="checkbox" defaultChecked disabled={!currentGoal}/>{currentGoal?`计入“${currentGoal.title}”进度`:"当前没有可关联的大目标"}</label><button className="primary submit">创建任务</button></form></div>}
+      {modal === "task" && <div className="overlay" onMouseDown={()=>{setModal(null);setEditingTask(null)}}><form key={editingTask?.id ?? "new"} className="modal" onSubmit={saveTask} onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="goal-tag">{editingTask?"编辑任务":"新任务"}</span><h2>{editingTask?"修改任务信息":"要推进什么事情？"}</h2></div><button type="button" aria-label="关闭" onClick={()=>{setModal(null);setEditingTask(null)}}>×</button></div><label>任务名称<input autoFocus value={title} onChange={e=>setTitle(e.target.value)} placeholder="例如：完成登录页面设计"/></label><div className="form-grid"><label>截止日期<input name="dueAt" type="date" defaultValue={editingTask?.date ?? "2026-08-22"}/></label><label>优先级<select name="priority" defaultValue={editingTask?.priority ?? "中"}><option>高</option><option>中</option><option>低</option></select></label></div><label>负责人<div className="member-pills">{team.map(m=><button type="button" className={selectedAssignees.includes(m.id)?"selected":""} onClick={()=>setSelectedAssignees(ids=>ids.includes(m.id)?ids.filter(id=>id!==m.id):[...ids,m.id])} key={m.id}>{m.name[0]} {m.name}</button>)}</div></label><label className="goal-check"><input name="includeGoal" type="checkbox" defaultChecked={editingTask ? Boolean(editingTask.goalId) : true} disabled={!currentGoal}/>{currentGoal?`计入“${currentGoal.title}”进度`:"当前没有可关联的大目标"}</label><button className="primary submit">{editingTask?"保存修改":"创建任务"}</button></form></div>}
       {modal === "invite" && <div className="overlay" onMouseDown={()=>setModal(null)}><div className="modal invite" onMouseDown={e=>e.stopPropagation()}><div className="invite-icon"><Icon name="users"/></div><h2>邀请新成员</h2><p>把邀请码发给同事。对方输入名字，就能加入工作室。</p><div className="code"><span>KHKH-0826</span><button onClick={()=>{navigator.clipboard?.writeText("KHKH-0826");setToast("邀请码已复制")}}>复制</button></div><small>邀请码将在 7 天后失效 · 最多使用 10 次</small><button className="primary submit" onClick={()=>setModal(null)}>完成</button></div></div>}
       {goalModal && <div className="overlay" onMouseDown={()=>setGoalModal(false)}><form className="modal" onSubmit={addGoal} onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="goal-tag">新目标</span><h2>立一个大目标</h2></div><button type="button" onClick={()=>setGoalModal(false)}>×</button></div><label>目标名称<input name="title" required placeholder="例如：发布第一版 Demo"/></label><label>目标说明<input name="description" placeholder="一句话描述成功标准"/></label><label>截止日期<input name="dueAt" type="date"/></label><button className="primary submit">创建大目标</button></form></div>}
       {toast && <div className="toast"><span>✓</span>{toast}</div>}
@@ -219,13 +252,20 @@ function JoinScreen({submit,verify,step,back,email,loading,error}:{submit:(e:Rea
   return <main className="join-page"><section className="join-card"><div className="brand join-brand"><span className="brand-mark">()</span><span>空括号工作室<span className="muted">XXXX</span></span></div>{step==="details"?<><div className="join-copy"><span className="goal-tag">仅限受邀成员</span><h1>加入工作室</h1><p>使用邀请码和邮箱验证码创建你的成员身份。</p></div><form onSubmit={submit}><label>邀请码<input name="code" autoComplete="off" placeholder="例如 KHKH-0826" required/></label><label>你的名字<input name="name" autoComplete="name" placeholder="团队中显示的名字" maxLength={30} required/></label><label>邮箱<input name="email" type="email" autoComplete="email" placeholder="name@example.com" required/></label>{error&&<p className="join-error">{error}</p>}<button className="primary submit" disabled={loading}>{loading?"正在发送…":"发送邮箱验证码"}</button></form></>:<><div className="join-copy"><span className="goal-tag">验证邮箱</span><h1>输入验证码</h1><p>验证码已发送至 {email}</p></div><form onSubmit={verify}><label>邮箱验证码<input name="otp" inputMode="numeric" autoComplete="one-time-code" placeholder="输入邮件中的验证码" minLength={6} required/></label>{error&&<p className="join-error">{error}</p>}<button className="primary submit" disabled={loading}>{loading?"正在验证…":"验证并进入工作台"}</button><button className="text-button" type="button" onClick={back}>返回修改邮箱</button></form></>}<small>邮箱仅用于登录和任务提醒，不会公开显示。</small></section></main>
 }
 
-function TaskList({tasks,toggle,remove}:{tasks:Task[];toggle:(id:number|string)=>void;remove:(id:number|string)=>void}) {
-  return <div className="task-list">{tasks.length===0?<div className="empty-state"><b>还没有任务</b><span>点击右上角“新建任务”开始规划。</span></div>:tasks.map(t=><article className="task-row" key={t.id}><button className={`check ${t.status === "done" ? "checked":""}`} onClick={()=>toggle(t.id)} aria-label={t.status === "done" ? "取消完成":"标记完成"}>{t.status === "done" && "✓"}</button><div className="task-main"><h3 className={t.status === "done" ? "done":""}>{t.title}</h3><div className="meta"><span className={`priority p-${t.priority}`}>{t.priority}优先级</span><span><Icon name="calendar"/>{dateText(t.date)}</span>{t.goalId && <span><Icon name="target"/>Demo 大目标</span>}</div></div><div className="assignees">{t.assignees.map((a,i)=><span className={`face f${members.indexOf(a)}`} key={a} style={{zIndex: 4-i}}>{a[0]}</span>)}</div><span className={`status s-${t.status}`}>{statusLabel[t.status]}</span><button className="dots row-dots" onClick={()=>remove(t.id)} aria-label={`删除${t.title}`} title="删除任务">•••</button></article>)}</div>
+function TaskList({tasks,toggle,edit,remove}:{tasks:Task[];toggle:(id:number|string)=>void;edit:(task:Task)=>void;remove:(id:number|string)=>void}) {
+  const [openMenu, setOpenMenu] = useState<number|string|null>(null);
+  return <div className="task-list">{tasks.length===0?<div className="empty-state"><b>还没有任务</b><span>点击右上角“新建任务”开始规划。</span></div>:tasks.map(t=><article className="task-row" key={t.id}><button className={`check ${t.status === "done" ? "checked":""}`} onClick={()=>toggle(t.id)} aria-label={t.status === "done" ? "取消完成":"标记完成"}>{t.status === "done" && "✓"}</button><div className="task-main"><h3 className={t.status === "done" ? "done":""}>{t.title}</h3><div className="meta"><span className={`priority p-${t.priority}`}>{t.priority}优先级</span><span><Icon name="calendar"/>{dateText(t.date)}</span>{t.goalId && <span><Icon name="target"/>Demo 大目标</span>}</div></div><div className="assignees">{t.assignees.map((a,i)=><span className={`face f${members.indexOf(a)}`} key={a} style={{zIndex: 4-i}}>{a[0]}</span>)}</div><span className={`status s-${t.status}`}>{statusLabel[t.status]}</span><div className="task-actions"><button className="dots row-dots" onClick={()=>setOpenMenu(openMenu===t.id?null:t.id)} aria-label={`${t.title}的更多操作`} aria-haspopup="menu" aria-expanded={openMenu===t.id}>•••</button>{openMenu===t.id&&<><button className="task-menu-scrim" aria-label="关闭任务操作菜单" onClick={()=>setOpenMenu(null)}/><div className="task-menu" role="menu"><button role="menuitem" onClick={()=>{setOpenMenu(null);edit(t)}}>编辑任务</button><button role="menuitem" className="danger" onClick={()=>{setOpenMenu(null);remove(t.id)}}>删除任务</button></div></>}</div></article>)}</div>
 }
 
 function Board({tasks,toggle}:{tasks:Task[];toggle:(id:number|string)=>void}) { return <div className="board">{(["todo","doing","done"] as Status[]).map(s=><div className="column" key={s}><div className="column-title"><span className={`dot ${s}`}/><b>{statusLabel[s]}</b><em>{tasks.filter(t=>t.status===s).length}</em></div>{tasks.filter(t=>t.status===s).map(t=><button className="board-card" onClick={()=>toggle(t.id)} key={t.id}><span className={`priority p-${t.priority}`}>{t.priority}优先级</span><h3>{t.title}</h3><div><span>{dateText(t.date)}</span><span className="mini-faces">{t.assignees.map(a=><i key={a}>{a[0]}</i>)}</span></div></button>)}</div>)}</div> }
 
 function Calendar({tasks,toggle}:{tasks:Task[];toggle:(id:number|string)=>void}) { const days=[10,11,12,13,14,15,16,17,18,19,20,21,22,23]; return <div className="calendar-view"><div className="cal-head"><button>‹</button><h3>2026 年 8 月</h3><button>›</button></div><div className="week">{"一二三四五六日".split("").map(x=><span key={x}>周{x}</span>)}</div><div className="cal-grid">{days.map(d=><div className={d===13?"today":""} key={d}><b>{d}</b>{tasks.filter(t=>Number(t.date.slice(-2))===d).map(t=><button onClick={()=>toggle(t.id)} className={`cal-task s-${t.status}`} key={t.id}>{t.title}</button>)}</div>)}</div></div> }
+
+function DashboardCalendar({tasks,toggle}:{tasks:Task[];toggle:(id:number|string)=>void}) {
+  const days = [null,null,null,null,null,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31];
+  const upcoming = tasks.filter(task=>task.status!=="done").sort((a,b)=>a.date.localeCompare(b.date)).slice(0,4);
+  return <><div className="mini-week">{"一二三四五六日".split("").map(day=><span key={day}>{day}</span>)}</div><div className="mini-calendar-grid">{days.map((day,index)=>day===null?<span className="blank" key={`blank-${index}`}/>:<button className={day===13?"today":""} key={day} onClick={()=>{const task=tasks.find(item=>Number(item.date.slice(-2))===day);if(task)toggle(task.id)}}><b>{day}</b>{tasks.some(task=>Number(task.date.slice(-2))===day)&&<i/>}</button>)}</div><div className="upcoming"><div className="upcoming-title"><b>近期任务</b><span>{upcoming.length} 项</span></div>{upcoming.length===0?<p>暂时没有待办任务</p>:upcoming.map(task=><button key={task.id} onClick={()=>toggle(task.id)}><time>{Number(task.date.slice(-2))}<small>8月</small></time><span><b>{task.title}</b><small>{statusLabel[task.status]} · {task.priority}优先级</small></span></button>)}</div></>
+}
 
 function dateText(d:string){ const n=Number(d.slice(-2)); return n===13?"今天":n===14?"明天":`8月${n}日`; }
 

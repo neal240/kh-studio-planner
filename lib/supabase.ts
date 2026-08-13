@@ -40,6 +40,9 @@ export const plannerApi = {
   createTask: (token: string, task: { title: string; dueAt?: string; priority?: string; goalId?: string; assignees?: string[] }) => request<{ id: string }>("rpc/create_planner_task", {
     method: "POST", body: JSON.stringify({ session_token: token, task_title: task.title, due_at: task.dueAt ?? null, task_priority: task.priority ?? "medium", goal_id: task.goalId ?? null, assignee_ids: task.assignees ?? [] }),
   }),
+  updateTask: (token: string, taskId: string, task: { title: string; dueAt?: string; priority?: string; goalId?: string; assignees?: string[] }) => request<void>("rpc/update_planner_task", {
+    method: "POST", body: JSON.stringify({ session_token: token, task_id: taskId, task_title: task.title, due_at: task.dueAt ?? null, task_priority: task.priority ?? "medium", goal_id: task.goalId ?? null, assignee_ids: task.assignees ?? [] }),
+  }),
   setTaskStatus: (token: string, taskId: string, status: "todo" | "doing" | "done") => request<void>("rpc/set_planner_task_status", {
     method: "POST", body: JSON.stringify({ session_token: token, task_id: taskId, new_status: status }),
   }),
