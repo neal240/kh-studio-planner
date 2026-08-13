@@ -86,9 +86,11 @@ export default function Home() {
     }
   }
 
-  const goalTasks = tasks.filter(t => t.goalId === 1);
+  const currentGoal = goals[0];
+  const goalTasks = currentGoal ? tasks.filter(t => t.goalId === currentGoal.id) : [];
   const done = goalTasks.filter(t => t.status === "done").length;
-  const progress = Math.round(done / goalTasks.length * 100);
+  const progress = goalTasks.length ? Math.round(done / goalTasks.length * 100) : 0;
+  const daysLeft = currentGoal?.dueAt ? Math.max(0, Math.ceil((new Date(currentGoal.dueAt).getTime() - Date.now()) / 86400000)) : null;
   const visible = filter === "我负责的" ? tasks.filter(t => t.assignees.includes("林野")) : filter === "即将到期" ? tasks.filter(t => t.date <= "2026-08-15" && t.status !== "done") : tasks;
 
   function toggleTask(id: number | string) {
@@ -115,11 +117,11 @@ export default function Home() {
   async function addTask(e: React.FormEvent) {
     e.preventDefault(); if (!title.trim()) return;
     const taskTitle = title.trim();
-    setTasks(ts => [...ts, { id: Date.now(), title: taskTitle, status: "todo", date: "2026-08-22", priority: "中", assignees: [currentName], goalId: 1 }]);
+    setTasks(ts => [...ts, { id: Date.now(), title: taskTitle, status: "todo", date: "2026-08-22", priority: "中", assignees: [currentName], goalId: currentGoal?.id }]);
     setTitle(""); setModal(null); setToast("任务已加入大目标");
     if (session) {
       try {
-        await plannerApi.createTask(session, { title: taskTitle, dueAt: "2026-08-22", priority: "medium" });
+        await plannerApi.createTask(session, { title: taskTitle, dueAt: "2026-08-22", priority: "medium", goalId: currentGoal?.id });
         await loadWorkspace(session);
       } catch {
         setToast("任务保存在本机，但云端同步失败");
@@ -163,11 +165,11 @@ export default function Home() {
         {section === "goals" ? <GoalsPage goals={goals} tasks={tasks} add={()=>setGoalModal(true)} remove={deleteGoal}/> : section === "members" ? <MembersPage members={team} invite={()=>setModal("invite")}/> : <>
         <header><div><p className="eyebrow">星期四，8月13日</p><h1>早上好，{currentName}</h1><p>今天也一起把重要的事情向前推一点。</p></div><div className="header-actions"><button className="icon-btn" onClick={() => setToast("浏览器提醒已开启")} aria-label="开启提醒"><Icon name="bell"/><i/></button><button className="primary" onClick={() => setModal("task")}><Icon name="plus"/>新建任务</button></div></header>
 
-        <section className="goal-card">
-          <div className="goal-top"><div><span className="goal-tag">当前大目标</span><h2>做出可玩的游戏 Demo</h2><p>在 9 月底前完成 15 分钟核心体验，准备第一次内部试玩。</p></div><button className="dots">•••</button></div>
-          <div className="progress-row"><div className="progress-copy"><strong>{progress}%</strong><span>{done} / {goalTasks.length} 项完成</span></div><div className="progress"><span style={{width: `${progress}%`}}/></div><span className="deadline">还剩 48 天</span></div>
-          <div className="faces">{members.map((m,i)=><span className={`face f${i}`} key={m}>{m[0]}</span>)}<span className="face plus">+</span><span className="team-note">3 位成员共同参与</span></div>
-        </section>
+        {currentGoal ? <section className="goal-card">
+          <div className="goal-top"><div><span className="goal-tag">当前大目标</span><h2>{currentGoal.title}</h2><p>{currentGoal.description || "暂未填写目标说明"}</p></div><button className="dots" onClick={()=>setSection("goals")}>•••</button></div>
+          <div className="progress-row"><div className="progress-copy"><strong>{progress}%</strong><span>{done} / {goalTasks.length} 项完成</span></div><div className="progress"><span style={{width: `${progress}%`}}/></div><span className="deadline">{daysLeft===null?"未设截止日期":`还剩 ${daysLeft} 天`}</span></div>
+          <div className="faces">{team.slice(0,4).map((m,i)=><span className={`face f${i%3}`} key={m.id}>{m.name[0]}</span>)}<span className="face plus">+</span><span className="team-note">{team.length} 位成员共同参与</span></div>
+        </section> : <section className="goal-card no-current-goal"><div><span className="goal-tag">当前大目标</span><h2>还没有大目标</h2><p>先建立目标，再把任务放进去，进度会自动计算。</p></div><button className="primary" onClick={()=>setSection("goals")}><Icon name="plus"/>新建目标</button></section>}
 
         <section className="tasks-section">
           <div className="toolbar"><div><h2>任务</h2><span>{visible.filter(t => t.status !== "done").length} 项待完成</span></div><div className="view-switch">{(["list","board","calendar"] as View[]).map(v=><button key={v} className={view===v?"selected":""} onClick={()=>setView(v)}><Icon name={v}/>{v==="list"?"清单":v==="board"?"看板":"日历"}</button>)}</div></div>
