@@ -755,6 +755,7 @@ export default function Home() {
                   {view === "list" && (
                     <TaskList
                       tasks={visible}
+                      subGoals={subGoals}
                       toggle={toggleTask}
                       edit={openEditTask}
                       remove={deleteTask}
@@ -1341,18 +1342,34 @@ function JoinScreen({
 
 function TaskList({
   tasks,
+  subGoals,
   toggle,
   edit,
   remove,
   viewNote,
 }: {
   tasks: Task[];
+  subGoals: SubGoal[];
   toggle: (id: number | string) => void;
   edit: (task: Task) => void;
   remove: (id: number | string) => void;
   viewNote: (task: Task) => void;
 }) {
   const [openMenu, setOpenMenu] = useState<number | string | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const groups = [
+    ...subGoals.filter((sub) => tasks.some((task) => task.subGoalId === sub.id)).map((sub) => ({ id: sub.id, title: sub.title, tasks: tasks.filter((task) => task.subGoalId === sub.id) })),
+    { id: "ungrouped", title: "其他任务", tasks: tasks.filter((task) => !task.subGoalId) },
+  ].filter((group) => group.tasks.length > 0);
+  const taskRow = (t: Task) => (
+    <article className="task-row" key={t.id}>
+      <button className={`check ${t.status === "done" ? "checked" : ""}`} onClick={() => toggle(t.id)} aria-label={t.status === "done" ? "取消完成" : "标记完成"}>{t.status === "done" && "✓"}</button>
+      <div className="task-main"><h3 className={t.status === "done" ? "done" : ""}>{t.title}</h3>{t.description && <button className="task-note" onClick={() => viewNote(t)}>{t.description}</button>}<div className="meta"><span className={`priority p-${t.priority}`}>{t.priority}优先级</span><span><Icon name="calendar" />{dateText(t.date)}</span>{t.goalId && <span><Icon name="target" />Demo 大目标</span>}</div></div>
+      <div className="assignees">{t.assignees.map((a, i) => <span className={`face f${members.indexOf(a)}`} key={a} style={{ zIndex: 4 - i }}>{a[0]}</span>)}</div>
+      <span className={`status s-${t.status}`}>{statusLabel[t.status]}</span>
+      <div className="task-actions"><button className="dots row-dots" onClick={() => setOpenMenu(openMenu === t.id ? null : t.id)} aria-label={`${t.title}的更多操作`}>•••</button>{openMenu === t.id && <><button className="task-menu-scrim" aria-label="关闭任务操作菜单" onClick={() => setOpenMenu(null)} /><div className="task-menu" role="menu"><button onClick={() => { setOpenMenu(null); edit(t); }}>编辑任务</button><button className="danger" onClick={() => { setOpenMenu(null); remove(t.id); }}>删除任务</button></div></>}</div>
+    </article>
+  );
   return (
     <div className="task-list">
       {tasks.length === 0 ? (
@@ -1360,7 +1377,8 @@ function TaskList({
           <b>还没有任务</b>
           <span>点击右上角“新建任务”开始规划。</span>
         </div>
-      ) : (
+      ) : groups.map((group) => <section className="task-folder" key={group.id}><button className="folder-head" onClick={()=>setCollapsed(state=>({...state,[group.id]:!state[group.id]}))}><span className="folder-icon">{collapsed[group.id]?"▸":"▾"}</span><b>{group.title}</b><em>{group.tasks.length} 项</em><span>{group.tasks.filter(task=>task.status==="done").length}/{group.tasks.length} 完成</span></button>{!collapsed[group.id]&&<div className="folder-tasks">{group.tasks.map(taskRow)}</div>}</section>) /* legacy rows retained below */}
+      {/*
         tasks.map((t) => (
           <article className="task-row" key={t.id}>
             <button
@@ -1445,8 +1463,7 @@ function TaskList({
               )}
             </div>
           </article>
-        ))
-      )}
+        )) */}
     </div>
   );
 }

@@ -340,10 +340,10 @@ svg {
   font-size: 15px;
 }
 .content {
-  margin-left: 238px;
+  margin-left: max(238px, calc((100vw - 1520px) / 2 + 238px));
   width: calc(100% - 238px);
   padding: 44px clamp(28px, 6vw, 88px) 70px;
-  max-width: 1500px;
+  max-width: 1280px;
 }
 header {
   display: flex;
@@ -1127,6 +1127,7 @@ header p {
 .task-list {
   overflow: visible;
 }
+.task-folder{border-bottom:1px solid var(--line)}.task-folder:last-child{border-bottom:0}.folder-head{width:100%;min-height:48px;border:0;background:var(--panel-2);padding:0 17px;display:flex;align-items:center;gap:9px;text-align:left;cursor:pointer}.folder-head:hover{filter:brightness(.985)}.folder-head b{font-size:12px}.folder-head em,.folder-head>span:last-child{font-style:normal;font-size:10px;color:var(--sub)}.folder-head em{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:4px 7px}.folder-head>span:last-child{margin-left:auto}.folder-icon{font-size:13px;color:var(--sub);width:14px}.folder-tasks{background:var(--panel)}
 .join-card {
   width: min(430px, 100%);
   background: var(--panel);
