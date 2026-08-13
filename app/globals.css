@@ -698,8 +698,11 @@ header p {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-width: 88px;
+  gap: 4px;
+  min-width: 70px;
+  padding: 4px 6px;
+  border-radius: 7px;
+  font-size: 9px;
   border: 1px solid transparent;
   font: inherit;
   cursor: pointer;
@@ -714,11 +717,11 @@ header p {
   transform: translateY(1px);
 }
 .status-dot {
-  width: 7px;
-  height: 7px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: #a9acb2;
-  flex: 0 0 7px;
+  flex: 0 0 5px;
 }
 .status-dot.doing {
   background: #718de0;
@@ -729,8 +732,8 @@ header p {
 .status-chevron {
   margin-left: auto;
   color: currentColor;
-  opacity: 0.65;
-  font-size: 12px;
+  opacity: 0.5;
+  font-size: 9px;
   line-height: 1;
 }
 .status-menu {
