@@ -64,12 +64,12 @@ begin
     raise exception '邀请码无效、已过期或次数已用完';
   end if;
   if char_length(trim(display_name)) < 1 or char_length(trim(display_name)) > 30 then raise exception '名字长度应为 1–30 个字符'; end if;
-  v_token := encode(gen_random_bytes(32), 'hex');
+  v_token := encode(extensions.gen_random_bytes(32), 'hex');
   select * into v_member from public.members where role='admin' and session_token_hash is null order by joined_at limit 1 for update;
   if v_member.id is not null then
-    update public.members set name=trim(display_name), session_token_hash=encode(digest(v_token,'sha256'),'hex') where id=v_member.id returning * into v_member;
+    update public.members set name=trim(display_name), session_token_hash=encode(extensions.digest(v_token,'sha256'),'hex') where id=v_member.id returning * into v_member;
   else
-    insert into public.members(name, role, session_token_hash) values(trim(display_name),'member',encode(digest(v_token,'sha256'),'hex')) returning * into v_member;
+    insert into public.members(name, role, session_token_hash) values(trim(display_name),'member',encode(extensions.digest(v_token,'sha256'),'hex')) returning * into v_member;
   end if;
   update public.invite_codes set uses=uses+1 where id=v_invite.id;
   return jsonb_build_object('session_token',v_token,'member_name',v_member.name,'role',v_member.role);
@@ -77,7 +77,7 @@ end $$;
 
 create or replace function public.member_for_token(session_token text)
 returns public.members language sql stable security definer set search_path=public as $$
-  select * from public.members where session_token_hash=encode(digest(session_token,'sha256'),'hex') limit 1
+  select * from public.members where session_token_hash=encode(extensions.digest(session_token,'sha256'),'hex') limit 1
 $$;
 
 create or replace function public.get_workspace_snapshot(session_token text)
