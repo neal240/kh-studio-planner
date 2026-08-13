@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { plannerApi, supabaseConfigured } from "../lib/supabase";
 
 type Status = "todo" | "doing" | "done";
 type View = "list" | "board" | "calendar";
-type Task = { id: number; title: string; status: Status; date: string; priority: "高" | "中" | "低"; assignees: string[]; goalId?: number };
+type Task = { id: number | string; title: string; status: Status; date: string; priority: "高" | "中" | "低"; assignees: string[]; goalId?: number | string };
 
 const initialTasks: Task[] = [
   { id: 1, title: "确认序章关卡流程", status: "done", date: "2026-08-12", priority: "高", assignees: ["林野", "阿澈"], goalId: 1 },
@@ -26,22 +27,92 @@ export default function Home() {
   const [title, setTitle] = useState("");
   const [toast, setToast] = useState("");
   const [filter, setFilter] = useState("全部任务");
+  const [session, setSession] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState("");
+  const [currentName, setCurrentName] = useState("林野");
 
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(""), 2600); return () => clearTimeout(t); }, [toast]);
+  useEffect(() => {
+    const saved = localStorage.getItem("kh_planner_session");
+    if (!saved || !supabaseConfigured) return;
+    setSession(saved);
+    loadWorkspace(saved).catch(() => {
+      localStorage.removeItem("kh_planner_session");
+      setSession(null);
+    });
+  }, []);
+
+  async function loadWorkspace(token: string) {
+    const data = await plannerApi.snapshot(token);
+    setCurrentName(data.member.name);
+    if (data.tasks.length) {
+      setTasks(data.tasks.map(t => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        date: t.due_at?.slice(0, 10) || "2026-08-22",
+        priority: t.priority === "high" ? "高" : t.priority === "low" ? "低" : "中",
+        assignees: t.assignees,
+        goalId: t.goal_id || undefined,
+      })));
+    }
+  }
+
+  async function joinWorkspace(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setJoining(true);
+    setJoinError("");
+    const form = new FormData(e.currentTarget);
+    try {
+      const joined = await plannerApi.redeemInvite(String(form.get("code")), String(form.get("name")));
+      localStorage.setItem("kh_planner_session", joined.session_token);
+      setSession(joined.session_token);
+      setCurrentName(joined.member_name);
+      await loadWorkspace(joined.session_token);
+      setToast(joined.role === "admin" ? "管理员账号创建成功" : "已加入空括号工作室");
+    } catch (error) {
+      setJoinError(error instanceof Error ? error.message : "加入失败，请检查邀请码");
+    } finally {
+      setJoining(false);
+    }
+  }
 
   const goalTasks = tasks.filter(t => t.goalId === 1);
   const done = goalTasks.filter(t => t.status === "done").length;
   const progress = Math.round(done / goalTasks.length * 100);
   const visible = filter === "我负责的" ? tasks.filter(t => t.assignees.includes("林野")) : filter === "即将到期" ? tasks.filter(t => t.date <= "2026-08-15" && t.status !== "done") : tasks;
 
-  function toggleTask(id: number) {
-    setTasks(ts => ts.map(t => t.id === id ? { ...t, status: t.status === "done" ? "todo" : "done" } : t));
+  function toggleTask(id: number | string) {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+    const next = task.status === "done" ? "todo" : "done";
+    setTasks(ts => ts.map(t => t.id === id ? { ...t, status: next } : t));
+    if (session && typeof id === "string") {
+      plannerApi.setTaskStatus(session, id, next).catch(() => {
+        setToast("同步失败，请稍后重试");
+        loadWorkspace(session);
+      });
+    }
   }
-  function addTask(e: React.FormEvent) {
+  async function addTask(e: React.FormEvent) {
     e.preventDefault(); if (!title.trim()) return;
-    setTasks(ts => [...ts, { id: Date.now(), title: title.trim(), status: "todo", date: "2026-08-22", priority: "中", assignees: ["林野"], goalId: 1 }]);
+    const taskTitle = title.trim();
+    setTasks(ts => [...ts, { id: Date.now(), title: taskTitle, status: "todo", date: "2026-08-22", priority: "中", assignees: [currentName], goalId: 1 }]);
     setTitle(""); setModal(null); setToast("任务已加入大目标");
+    if (session) {
+      try {
+        await plannerApi.createTask(session, { title: taskTitle, dueAt: "2026-08-22", priority: "medium" });
+        await loadWorkspace(session);
+      } catch {
+        setToast("任务保存在本机，但云端同步失败");
+      }
+    }
+  }
+
+  if (supabaseConfigured && !session) {
+    return <JoinScreen submit={joinWorkspace} loading={joining} error={joinError}/>;
   }
 
   return (
@@ -56,12 +127,12 @@ export default function Home() {
         <div className="side-bottom">
           <button onClick={() => setModal("invite")}><Icon name="plus"/>邀请成员</button>
           <button onClick={() => setTheme(theme === "light" ? "dark" : "light")}><Icon name={theme === "light" ? "moon" : "sun"}/>{theme === "light" ? "切换深色" : "切换浅色"}</button>
-          <div className="profile"><div className="avatar">林</div><div><b>林野</b><span>管理员</span></div><span className="more">•••</span></div>
+          <div className="profile"><div className="avatar">{currentName[0]}</div><div><b>{currentName}</b><span>工作室成员</span></div><span className="more">•••</span></div>
         </div>
       </aside>
 
       <section className="content">
-        <header><div><p className="eyebrow">星期四，8月13日</p><h1>早上好，林野</h1><p>今天也一起把重要的事情向前推一点。</p></div><div className="header-actions"><button className="icon-btn" onClick={() => setToast("浏览器提醒已开启")} aria-label="开启提醒"><Icon name="bell"/><i/></button><button className="primary" onClick={() => setModal("task")}><Icon name="plus"/>新建任务</button></div></header>
+        <header><div><p className="eyebrow">星期四，8月13日</p><h1>早上好，{currentName}</h1><p>今天也一起把重要的事情向前推一点。</p></div><div className="header-actions"><button className="icon-btn" onClick={() => setToast("浏览器提醒已开启")} aria-label="开启提醒"><Icon name="bell"/><i/></button><button className="primary" onClick={() => setModal("task")}><Icon name="plus"/>新建任务</button></div></header>
 
         <section className="goal-card">
           <div className="goal-top"><div><span className="goal-tag">当前大目标</span><h2>做出可玩的游戏 Demo</h2><p>在 9 月底前完成 15 分钟核心体验，准备第一次内部试玩。</p></div><button className="dots">•••</button></div>
@@ -86,13 +157,17 @@ export default function Home() {
   );
 }
 
-function TaskList({tasks,toggle}:{tasks:Task[];toggle:(id:number)=>void}) {
+function JoinScreen({submit,loading,error}:{submit:(e:React.FormEvent<HTMLFormElement>)=>void;loading:boolean;error:string}) {
+  return <main className="join-page"><section className="join-card"><div className="brand join-brand"><span className="brand-mark">()</span><span>空括号工作室<span className="muted">XXXX</span></span></div><div className="join-copy"><span className="goal-tag">仅限受邀成员</span><h1>加入工作室</h1><p>输入管理员发给你的邀请码，再留下你的名字。</p></div><form onSubmit={submit}><label>邀请码<input name="code" autoComplete="off" placeholder="例如 KHKH-0826" required/></label><label>你的名字<input name="name" autoComplete="name" placeholder="团队中显示的名字" maxLength={30} required/></label>{error&&<p className="join-error">{error}</p>}<button className="primary submit" disabled={loading}>{loading?"正在加入…":"进入工作台"}</button></form><small>没有邀请码？请联系工作室管理员。</small></section></main>
+}
+
+function TaskList({tasks,toggle}:{tasks:Task[];toggle:(id:number|string)=>void}) {
   return <div className="task-list">{tasks.map(t=><article className="task-row" key={t.id}><button className={`check ${t.status === "done" ? "checked":""}`} onClick={()=>toggle(t.id)} aria-label={t.status === "done" ? "取消完成":"标记完成"}>{t.status === "done" && "✓"}</button><div className="task-main"><h3 className={t.status === "done" ? "done":""}>{t.title}</h3><div className="meta"><span className={`priority p-${t.priority}`}>{t.priority}优先级</span><span><Icon name="calendar"/>{dateText(t.date)}</span>{t.goalId && <span><Icon name="target"/>Demo 大目标</span>}</div></div><div className="assignees">{t.assignees.map((a,i)=><span className={`face f${members.indexOf(a)}`} key={a} style={{zIndex: 4-i}}>{a[0]}</span>)}</div><span className={`status s-${t.status}`}>{statusLabel[t.status]}</span><button className="dots row-dots">•••</button></article>)}</div>
 }
 
-function Board({tasks,toggle}:{tasks:Task[];toggle:(id:number)=>void}) { return <div className="board">{(["todo","doing","done"] as Status[]).map(s=><div className="column" key={s}><div className="column-title"><span className={`dot ${s}`}/><b>{statusLabel[s]}</b><em>{tasks.filter(t=>t.status===s).length}</em></div>{tasks.filter(t=>t.status===s).map(t=><button className="board-card" onClick={()=>toggle(t.id)} key={t.id}><span className={`priority p-${t.priority}`}>{t.priority}优先级</span><h3>{t.title}</h3><div><span>{dateText(t.date)}</span><span className="mini-faces">{t.assignees.map(a=><i key={a}>{a[0]}</i>)}</span></div></button>)}</div>)}</div> }
+function Board({tasks,toggle}:{tasks:Task[];toggle:(id:number|string)=>void}) { return <div className="board">{(["todo","doing","done"] as Status[]).map(s=><div className="column" key={s}><div className="column-title"><span className={`dot ${s}`}/><b>{statusLabel[s]}</b><em>{tasks.filter(t=>t.status===s).length}</em></div>{tasks.filter(t=>t.status===s).map(t=><button className="board-card" onClick={()=>toggle(t.id)} key={t.id}><span className={`priority p-${t.priority}`}>{t.priority}优先级</span><h3>{t.title}</h3><div><span>{dateText(t.date)}</span><span className="mini-faces">{t.assignees.map(a=><i key={a}>{a[0]}</i>)}</span></div></button>)}</div>)}</div> }
 
-function Calendar({tasks,toggle}:{tasks:Task[];toggle:(id:number)=>void}) { const days=[10,11,12,13,14,15,16,17,18,19,20,21,22,23]; return <div className="calendar-view"><div className="cal-head"><button>‹</button><h3>2026 年 8 月</h3><button>›</button></div><div className="week">{"一二三四五六日".split("").map(x=><span key={x}>周{x}</span>)}</div><div className="cal-grid">{days.map(d=><div className={d===13?"today":""} key={d}><b>{d}</b>{tasks.filter(t=>Number(t.date.slice(-2))===d).map(t=><button onClick={()=>toggle(t.id)} className={`cal-task s-${t.status}`} key={t.id}>{t.title}</button>)}</div>)}</div></div> }
+function Calendar({tasks,toggle}:{tasks:Task[];toggle:(id:number|string)=>void}) { const days=[10,11,12,13,14,15,16,17,18,19,20,21,22,23]; return <div className="calendar-view"><div className="cal-head"><button>‹</button><h3>2026 年 8 月</h3><button>›</button></div><div className="week">{"一二三四五六日".split("").map(x=><span key={x}>周{x}</span>)}</div><div className="cal-grid">{days.map(d=><div className={d===13?"today":""} key={d}><b>{d}</b>{tasks.filter(t=>Number(t.date.slice(-2))===d).map(t=><button onClick={()=>toggle(t.id)} className={`cal-task s-${t.status}`} key={t.id}>{t.title}</button>)}</div>)}</div></div> }
 
 function dateText(d:string){ const n=Number(d.slice(-2)); return n===13?"今天":n===14?"明天":`8月${n}日`; }
 
