@@ -690,23 +690,39 @@ header p {
 .row-dots {
   width: 25px;
 }
+.status-select {
+  border: 0;
+  border-radius: 7px;
+  padding: 5px 24px 5px 8px;
+  font: inherit;
+  cursor: pointer;
+  outline: none;
+}
 .board {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 14px;
+  align-items: stretch;
 }
 .column {
   background: var(--panel-2);
   border-radius: 16px;
   padding: 14px;
   min-height: 350px;
+  height: min(680px, calc(100vh - 190px));
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 .column-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 3px 3px 13px;
+  padding: 17px 3px 13px;
   font-size: 12px;
+  position: sticky;
+  top: -14px;
+  z-index: 1;
+  background: var(--panel-2);
 }
 .column-title .dot {
   width: 8px;

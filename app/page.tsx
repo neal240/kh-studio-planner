@@ -352,10 +352,9 @@ export default function Home() {
           )
         : tasks;
 
-  function toggleTask(id: number | string) {
+  function changeTaskStatus(id: number | string, next: Status) {
     const task = tasks.find((t) => t.id === id);
-    if (!task) return;
-    const next = task.status === "done" ? "todo" : "done";
+    if (!task || task.status === next) return;
     setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, status: next } : t)));
     if (session && typeof id === "string") {
       plannerApi.setTaskStatus(session, id, next).catch(() => {
@@ -363,6 +362,11 @@ export default function Home() {
         loadWorkspace(session);
       });
     }
+  }
+  function toggleTask(id: number | string) {
+    const task = tasks.find((t) => t.id === id);
+    if (!task) return;
+    changeTaskStatus(id, task.status === "done" ? "todo" : "done");
   }
   async function deleteTask(id: number | string) {
     const task = tasks.find((t) => t.id === id);
@@ -392,6 +396,7 @@ export default function Home() {
     const description = String(form.get("description") || "").trim();
     const dueAt = taskHasDueDate ? String(form.get("dueAt") || "") : "";
     const priorityLabel = String(form.get("priority")) as "高" | "中" | "低";
+    const status = String(form.get("status")) as Status;
     const includeGoal = form.get("includeGoal") === "on";
     const subGoalId = includeGoal
       ? String(form.get("subGoalId") || "") || undefined
@@ -405,7 +410,7 @@ export default function Home() {
         id: Date.now(),
         title: taskTitle,
         description,
-        status: "todo",
+        status,
         date: dueAt,
         priority: priorityLabel,
         assignees: selectedNames,
@@ -418,7 +423,7 @@ export default function Home() {
     setToast("任务已加入大目标");
     if (session) {
       try {
-        await plannerApi.createTask(session, {
+        const created = await plannerApi.createTask(session, {
           title: taskTitle,
           description,
           dueAt: dueAt || undefined,
@@ -432,6 +437,9 @@ export default function Home() {
           subGoalId,
           assignees: selectedAssignees,
         });
+        if (status !== "todo") {
+          await plannerApi.setTaskStatus(session, created.id, status);
+        }
         await loadWorkspace(session);
       } catch {
         setToast("任务保存在本机，但云端同步失败");
@@ -467,6 +475,7 @@ export default function Home() {
     const description = String(form.get("description") || "").trim();
     const dueAt = taskHasDueDate ? String(form.get("dueAt") || "") : "";
     const priority = String(form.get("priority")) as Task["priority"];
+    const status = String(form.get("status")) as Status;
     const includeGoal = form.get("includeGoal") === "on";
     const subGoalId = includeGoal
       ? String(form.get("subGoalId") || "") || undefined
@@ -482,6 +491,7 @@ export default function Home() {
       description,
       date: dueAt,
       priority,
+      status,
       assignees,
       goalId: includeGoal ? currentGoal?.id : undefined,
       subGoalId,
@@ -505,6 +515,9 @@ export default function Home() {
           subGoalId,
           assignees: selectedAssignees,
         });
+        if (status !== editingTask.status) {
+          await plannerApi.setTaskStatus(session, updated.id, status);
+        }
         await loadWorkspace(session);
       } catch {
         setToast("更新失败，任务已恢复");
@@ -801,6 +814,7 @@ export default function Home() {
                       tasks={visible}
                       subGoals={subGoals}
                       toggle={toggleTask}
+                      changeStatus={changeTaskStatus}
                       edit={openEditTask}
                       remove={deleteTask}
                       viewNote={setViewingTask}
@@ -923,6 +937,17 @@ export default function Home() {
                   <option>高</option>
                   <option>中</option>
                   <option>低</option>
+                </select>
+              </label>
+              <label>
+                任务状态
+                <select
+                  name="status"
+                  defaultValue={editingTask?.status ?? "todo"}
+                >
+                  <option value="todo">待开始</option>
+                  <option value="doing">进行中</option>
+                  <option value="done">已完成</option>
                 </select>
               </label>
             </div>
@@ -1388,6 +1413,7 @@ function TaskList({
   tasks,
   subGoals,
   toggle,
+  changeStatus,
   edit,
   remove,
   viewNote,
@@ -1395,6 +1421,7 @@ function TaskList({
   tasks: Task[];
   subGoals: SubGoal[];
   toggle: (id: number | string) => void;
+  changeStatus: (id: number | string, status: Status) => void;
   edit: (task: Task) => void;
   remove: (id: number | string) => void;
   viewNote: (task: Task) => void;
@@ -1410,7 +1437,16 @@ function TaskList({
       <button className={`check ${t.status === "done" ? "checked" : ""}`} onClick={() => toggle(t.id)} aria-label={t.status === "done" ? "取消完成" : "标记完成"}>{t.status === "done" && "✓"}</button>
       <div className="task-main"><h3 className={t.status === "done" ? "done" : ""}>{t.title}</h3>{t.description && <button className="task-note" onClick={() => viewNote(t)}>{t.description}</button>}<div className="meta"><span className={`priority p-${t.priority}`}>{t.priority}优先级</span><span><Icon name="calendar" />{dateText(t.date)}</span>{t.goalId && <span><Icon name="target" />Demo 大目标</span>}</div></div>
       <div className="assignees">{t.assignees.map((a, i) => <span className={`face f${members.indexOf(a)}`} key={a} style={{ zIndex: 4 - i }}>{a[0]}</span>)}</div>
-      <span className={`status s-${t.status}`}>{statusLabel[t.status]}</span>
+      <select
+        className={`status status-select s-${t.status}`}
+        value={t.status}
+        onChange={(event) => changeStatus(t.id, event.target.value as Status)}
+        aria-label={`修改“${t.title}”的状态`}
+      >
+        <option value="todo">待开始</option>
+        <option value="doing">进行中</option>
+        <option value="done">已完成</option>
+      </select>
       <div className="task-actions"><button className="dots row-dots" onClick={() => setOpenMenu(openMenu === t.id ? null : t.id)} aria-label={`${t.title}的更多操作`}>•••</button>{openMenu === t.id && <><button className="task-menu-scrim" aria-label="关闭任务操作菜单" onClick={() => setOpenMenu(null)} /><div className="task-menu" role="menu"><button onClick={() => { setOpenMenu(null); edit(t); }}>编辑任务</button><button className="danger" onClick={() => { setOpenMenu(null); remove(t.id); }}>删除任务</button></div></>}</div>
     </article>
   );
