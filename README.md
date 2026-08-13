@@ -21,3 +21,5 @@ npm run dev
 ```
 
 Supabase 连接信息通过本地环境变量配置，请勿把数据库密码或 `service_role` 密钥提交到仓库。
+
+首次配置时，在 Supabase SQL Editor 运行 `supabase/schema.sql`，以创建带邀请码保护的数据表和操作接口。
