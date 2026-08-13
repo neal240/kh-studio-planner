@@ -4,8 +4,8 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
 export const authClient = createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true } });
 
-export async function sendEmailCode(email: string) {
-  const { error } = await authClient.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+export async function sendEmailCode(email: string, shouldCreateUser = true) {
+  const { error } = await authClient.auth.signInWithOtp({ email, options: { shouldCreateUser } });
   if (error) throw error;
 }
 
@@ -25,4 +25,8 @@ export async function joinWithVerifiedEmail(accessToken: string, inviteCode: str
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new Error(data?.message || "加入工作室失败");
   return data as { session_token: string; member_name: string; role: string };
+}
+
+export async function loginWithVerifiedEmail(accessToken: string) {
+  return joinWithVerifiedEmail(accessToken, "", "");
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { plannerApi, supabaseConfigured } from "../lib/supabase";
-import { joinWithVerifiedEmail, sendEmailCode, verifyEmailCode } from "../lib/auth";
+import { joinWithVerifiedEmail, loginWithVerifiedEmail, sendEmailCode, verifyEmailCode } from "../lib/auth";
 
 type Status = "todo" | "doing" | "done";
 type View = "list" | "board" | "calendar";
@@ -35,6 +35,7 @@ export default function Home() {
   const [session, setSession] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState("");
+  const [authMode, setAuthMode] = useState<"login"|"join">("login");
   const [authStep, setAuthStep] = useState<"details"|"code">("details");
   const [pendingJoin, setPendingJoin] = useState({email:"",name:"",code:""});
   const [currentName, setCurrentName] = useState("林野");
@@ -81,8 +82,8 @@ export default function Home() {
     setJoinError("");
     const form = new FormData(e.currentTarget);
     try {
-      const email=String(form.get("email")); const name=String(form.get("name")); const code=String(form.get("code"));
-      await sendEmailCode(email); setPendingJoin({email,name,code}); setAuthStep("code"); return;
+      const email=String(form.get("email")); const name=String(form.get("name")||""); const code=String(form.get("code")||"");
+      await sendEmailCode(email, authMode === "join"); setPendingJoin({email,name,code}); setAuthStep("code"); return;
     } catch (error) {
       setJoinError(error instanceof Error ? error.message : "验证码发送失败");
     } finally { setJoining(false); }
@@ -92,12 +93,12 @@ export default function Home() {
     e.preventDefault(); setJoining(true); setJoinError(""); const form=new FormData(e.currentTarget);
     try {
       const accessToken=await verifyEmailCode(pendingJoin.email,String(form.get("otp")));
-      const joined=await joinWithVerifiedEmail(accessToken,pendingJoin.code,pendingJoin.name);
+      const joined=authMode === "login" ? await loginWithVerifiedEmail(accessToken) : await joinWithVerifiedEmail(accessToken,pendingJoin.code,pendingJoin.name);
       localStorage.setItem("kh_planner_session", joined.session_token);
       setSession(joined.session_token);
       setCurrentName(joined.member_name);
       await loadWorkspace(joined.session_token);
-      setToast(joined.role === "admin" ? "管理员账号创建成功" : "已加入空括号工作室");
+      setToast(authMode === "login" ? "登录成功" : joined.role === "admin" ? "管理员账号创建成功" : "已加入空括号工作室");
     } catch(error){setJoinError(error instanceof Error?error.message:"验证失败");} finally{setJoining(false);}
   }
 
@@ -195,7 +196,7 @@ export default function Home() {
   }
 
   if (supabaseConfigured && !session) {
-    return <JoinScreen submit={joinWorkspace} verify={verifyAndJoin} step={authStep} back={()=>{setAuthStep("details");setJoinError("")}} email={pendingJoin.email} loading={joining} error={joinError}/>;
+    return <JoinScreen mode={authMode} changeMode={mode=>{setAuthMode(mode);setAuthStep("details");setJoinError("")}} submit={joinWorkspace} verify={verifyAndJoin} step={authStep} back={()=>{setAuthStep("details");setJoinError("")}} email={pendingJoin.email} loading={joining} error={joinError}/>;
   }
 
   return (
@@ -251,8 +252,8 @@ function MembersPage({members,invite}:{members:TeamMember[];invite:()=>void}) {
   return <><header><div><p className="eyebrow">工作室成员</p><h1>团队成员</h1><p>一起参与目标和任务的所有伙伴。</p></div><button className="primary" onClick={invite}><Icon name="plus"/>邀请成员</button></header><div className="members-panel"><div className="members-head"><b>{members.length} 位成员</b><span>所有成员都可以创建和完成任务</span></div>{members.map((m,i)=><article className="member-row" key={m.id}><span className={`member-avatar f${i%3}`}>{m.name[0]}</span><div><b>{m.name}</b><span>{m.role==="admin"?"管理员":"工作室成员"}</span></div><time>{new Date(m.joinedAt).toLocaleDateString("zh-CN")} 加入</time><span className={`role-badge ${m.role}`}>{m.role==="admin"?"管理员":"成员"}</span></article>)}</div></>
 }
 
-function JoinScreen({submit,verify,step,back,email,loading,error}:{submit:(e:React.FormEvent<HTMLFormElement>)=>void;verify:(e:React.FormEvent<HTMLFormElement>)=>void;step:"details"|"code";back:()=>void;email:string;loading:boolean;error:string}) {
-  return <main className="join-page"><section className="join-card"><div className="brand join-brand"><span className="brand-mark">()</span><span>空括号工作室<span className="muted">XXXX</span></span></div>{step==="details"?<><div className="join-copy"><span className="goal-tag">仅限受邀成员</span><h1>加入工作室</h1><p>使用邀请码和邮箱验证码创建你的成员身份。</p></div><form onSubmit={submit}><label>邀请码<input name="code" autoComplete="off" placeholder="例如 KHKH-0826" required/></label><label>你的名字<input name="name" autoComplete="name" placeholder="团队中显示的名字" maxLength={30} required/></label><label>邮箱<input name="email" type="email" autoComplete="email" placeholder="name@example.com" required/></label>{error&&<p className="join-error">{error}</p>}<button className="primary submit" disabled={loading}>{loading?"正在发送…":"发送邮箱验证码"}</button></form></>:<><div className="join-copy"><span className="goal-tag">验证邮箱</span><h1>输入验证码</h1><p>验证码已发送至 {email}</p></div><form onSubmit={verify}><label>邮箱验证码<input name="otp" inputMode="numeric" autoComplete="one-time-code" placeholder="输入邮件中的验证码" minLength={6} required/></label>{error&&<p className="join-error">{error}</p>}<button className="primary submit" disabled={loading}>{loading?"正在验证…":"验证并进入工作台"}</button><button className="text-button" type="button" onClick={back}>返回修改邮箱</button></form></>}<small>邮箱仅用于登录和任务提醒，不会公开显示。</small></section></main>
+function JoinScreen({mode,changeMode,submit,verify,step,back,email,loading,error}:{mode:"login"|"join";changeMode:(mode:"login"|"join")=>void;submit:(e:React.FormEvent<HTMLFormElement>)=>void;verify:(e:React.FormEvent<HTMLFormElement>)=>void;step:"details"|"code";back:()=>void;email:string;loading:boolean;error:string}) {
+  return <main className="join-page"><section className="join-card"><div className="brand join-brand"><span className="brand-mark">()</span><span>空括号工作室<span className="muted">XXXX</span></span></div>{step==="details"?<><div className="auth-tabs" role="tablist"><button type="button" role="tab" aria-selected={mode==="login"} className={mode==="login"?"selected":""} onClick={()=>changeMode("login")}>已有账号登录</button><button type="button" role="tab" aria-selected={mode==="join"} className={mode==="join"?"selected":""} onClick={()=>changeMode("join")}>首次加入</button></div><div className="join-copy"><span className="goal-tag">{mode==="login"?"成员登录":"仅限受邀成员"}</span><h1>{mode==="login"?"欢迎回来":"加入工作室"}</h1><p>{mode==="login"?"输入注册邮箱，我们会发送一次性验证码。":"使用邀请码和邮箱验证码创建你的成员身份。"}</p></div><form onSubmit={submit}>{mode==="join"&&<><label>邀请码<input name="code" autoComplete="off" placeholder="例如 KHKH-0826" required/></label><label>你的名字<input name="name" autoComplete="name" placeholder="团队中显示的名字" maxLength={30} required/></label></>}<label>邮箱<input name="email" type="email" autoComplete="email" placeholder="name@example.com" required/></label>{error&&<p className="join-error">{error}</p>}<button className="primary submit" disabled={loading}>{loading?"正在发送…":mode==="login"?"发送登录验证码":"发送注册验证码"}</button></form></>:<><div className="join-copy"><span className="goal-tag">验证邮箱</span><h1>输入验证码</h1><p>验证码已发送至 {email}</p></div><form onSubmit={verify}><label>邮箱验证码<input name="otp" inputMode="numeric" autoComplete="one-time-code" placeholder="输入邮件中的验证码" minLength={6} required/></label>{error&&<p className="join-error">{error}</p>}<button className="primary submit" disabled={loading}>{loading?"正在验证…":mode==="login"?"登录并进入工作台":"验证并加入工作室"}</button><button className="text-button" type="button" onClick={back}>返回修改邮箱</button></form></>}<small>邮箱仅用于登录和任务提醒，不会公开显示。</small></section></main>
 }
 
 function TaskList({tasks,toggle,edit,remove}:{tasks:Task[];toggle:(id:number|string)=>void;edit:(task:Task)=>void;remove:(id:number|string)=>void}) {
