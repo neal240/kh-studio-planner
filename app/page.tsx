@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { plannerApi, supabaseConfigured } from "../lib/supabase";
+import { plannerApi, supabaseConfigured, type WorkspaceSnapshot } from "../lib/supabase";
 import {
   joinWithVerifiedEmail,
   loginWithVerifiedEmail,
@@ -108,7 +108,7 @@ const statusLabel: Record<Status, string> = {
 export default function Home() {
   const [view, setView] = useState<View>("list");
   const [section, setSection] = useState<Section>("workspace");
-  const [tasks, setTasks] = useState(initialTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [modal, setModal] = useState<"task" | "invite" | null>(null);
   const [title, setTitle] = useState("");
@@ -124,7 +124,7 @@ export default function Home() {
     name: "",
     code: "",
   });
-  const [currentName, setCurrentName] = useState("林野");
+  const [currentName, setCurrentName] = useState("成员");
   const [currentMemberId, setCurrentMemberId] = useState("");
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
   const [taskHasDueDate, setTaskHasDueDate] = useState(true);
@@ -136,6 +136,7 @@ export default function Home() {
   const [subGoalModal, setSubGoalModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [viewingTask, setViewingTask] = useState<Task | null>(null);
+  const [connectionState, setConnectionState] = useState<"loading" | "online" | "offline">("loading");
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -149,18 +150,31 @@ export default function Home() {
     const saved = localStorage.getItem("kh_planner_session");
     if (!saved || !supabaseConfigured) return;
     setSession(saved);
+    const cached = localStorage.getItem("kh_planner_workspace_cache");
+    if (cached) {
+      try { applyWorkspace(JSON.parse(cached) as WorkspaceSnapshot, false); } catch { localStorage.removeItem("kh_planner_workspace_cache"); }
+    }
     restoreWorkspace(saved);
   }, []);
+  useEffect(() => {
+    if (!session) return;
+    const retry = () => { if (navigator.onLine) restoreWorkspace(session); };
+    window.addEventListener("online", retry);
+    const timer = window.setInterval(() => { if (connectionState === "offline" && navigator.onLine) restoreWorkspace(session); }, 15000);
+    return () => { window.removeEventListener("online", retry); window.clearInterval(timer); };
+  }, [session, connectionState]);
 
   async function restoreWorkspace(token: string) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         await loadWorkspace(token);
+        setConnectionState("online");
         return;
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
         if (/会话已失效|session.*invalid|unauthorized/i.test(message)) {
           localStorage.removeItem("kh_planner_session");
+          localStorage.removeItem("kh_planner_workspace_cache");
           setSession(null);
           return;
         }
@@ -170,11 +184,18 @@ export default function Home() {
           );
       }
     }
-    setToast("网络暂时不可用，登录状态已保留");
+    setConnectionState("offline");
+    setToast("网络暂时不可用，正在显示上次同步的数据");
   }
 
   async function loadWorkspace(token: string) {
     const data = await plannerApi.snapshot(token);
+    applyWorkspace(data, true);
+    setConnectionState("online");
+  }
+
+  function applyWorkspace(data: WorkspaceSnapshot, persist: boolean) {
+    if (persist) localStorage.setItem("kh_planner_workspace_cache", JSON.stringify(data));
     setCurrentName(data.member.name);
     setCurrentMemberId(data.member.id);
     setGoals(
@@ -637,6 +658,7 @@ export default function Home() {
                 <p>今天也一起把重要的事情向前推一点。</p>
               </div>
               <div className="header-actions">
+                <span className={`connection-badge ${connectionState}`}>{connectionState === "online" ? "已同步" : connectionState === "offline" ? "离线 · 正在重连" : "正在同步"}</span>
                 <button
                   className="icon-btn"
                   onClick={() => setToast("浏览器提醒已开启")}
