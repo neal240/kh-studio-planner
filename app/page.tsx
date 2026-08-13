@@ -617,7 +617,7 @@ export default function Home() {
         <div className="brand">
           <span className="brand-mark">()</span>
           <span>
-            空括号工作室<span className="muted">XXXX</span>
+            空括号工作室
           </span>
         </div>
         <nav>
@@ -1290,7 +1290,7 @@ function JoinScreen({
         <div className="brand join-brand">
           <span className="brand-mark">()</span>
           <span>
-            空括号工作室<span className="muted">XXXX</span>
+            空括号工作室
           </span>
         </div>
         {step === "details" ? (
