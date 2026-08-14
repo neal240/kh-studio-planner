@@ -41,6 +41,7 @@ type Task = {
   goalId?: number | string;
   subGoalId?: string;
 };
+type ActivityLog = WorkspaceSnapshot["activity_logs"][number];
 
 const initialTasks: Task[] = [
   {
@@ -147,6 +148,7 @@ export default function Home() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [subGoals, setSubGoals] = useState<SubGoal[]>([]);
   const [team, setTeam] = useState<TeamMember[]>([]);
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [goalModal, setGoalModal] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [subGoalModal, setSubGoalModal] = useState(false);
@@ -244,6 +246,7 @@ export default function Home() {
         joinedAt: m.joined_at,
       })),
     );
+    setActivities(data.activity_logs || []);
     setTasks(
       data.tasks.map((t) => ({
         id: t.id,
@@ -357,10 +360,13 @@ export default function Home() {
     if (!task || task.status === next) return;
     setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, status: next } : t)));
     if (session && typeof id === "string") {
-      plannerApi.setTaskStatus(session, id, next).catch(() => {
-        setToast("同步失败，请稍后重试");
-        loadWorkspace(session);
-      });
+      plannerApi
+        .setTaskStatus(session, id, next)
+        .then(() => loadWorkspace(session))
+        .catch(() => {
+          setToast("同步失败，请稍后重试");
+          loadWorkspace(session);
+        });
     }
   }
   function toggleTask(id: number | string) {
@@ -832,20 +838,23 @@ export default function Home() {
                   )}
                 </section>
               </div>
-              <aside className="workspace-calendar" aria-label="任务日历">
-                <div className="side-calendar-head">
-                  <div>
-                    <span className="goal-tag">日程概览</span>
-                    <h2>2026 年 8 月</h2>
+              <aside className="workspace-side">
+                <section className="workspace-calendar" aria-label="任务日历">
+                  <div className="side-calendar-head">
+                    <div>
+                      <span className="goal-tag">日程概览</span>
+                      <h2>2026 年 8 月</h2>
+                    </div>
+                    <button
+                      className="calendar-link"
+                      onClick={() => setView("calendar")}
+                    >
+                      查看日历
+                    </button>
                   </div>
-                  <button
-                    className="calendar-link"
-                    onClick={() => setView("calendar")}
-                  >
-                    查看日历
-                  </button>
-                </div>
-                <DashboardCalendar tasks={tasks} toggle={toggleTask} />
+                  <DashboardCalendar tasks={tasks} toggle={toggleTask} />
+                </section>
+                <ActivityPanel activities={activities} />
               </aside>
             </div>
           </>
@@ -1776,6 +1785,113 @@ function DashboardCalendar({
       </div>
     </>
   );
+}
+
+function ActivityPanel({ activities }: { activities: ActivityLog[] }) {
+  return (
+    <section className="activity-panel" aria-label="最近动态">
+      <div className="activity-head">
+        <div>
+          <span className="goal-tag">协作记录</span>
+          <h2>最近动态</h2>
+        </div>
+        <span>{activities.length} 条</span>
+      </div>
+      {activities.length === 0 ? (
+        <p className="activity-empty">还没有操作记录</p>
+      ) : (
+        <div className="activity-list">
+          {activities.slice(0, 8).map((activity) => (
+            <article className="activity-item" key={activity.id}>
+              <span className="activity-avatar">{activity.actor_name[0]}</span>
+              <div>
+                <p>
+                  <b>{activity.actor_name}</b>
+                  {activityDescription(activity)}
+                </p>
+                <time dateTime={activity.created_at}>
+                  {formatActivityTime(activity.created_at)}
+                </time>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function activityDescription(activity: ActivityLog) {
+  const title = `「${activity.entity_title}」`;
+  if (activity.action === "created") return ` 创建了${activityEntityLabel(activity.entity_type)}${title}`;
+  if (activity.action === "deleted") return ` 删除了${activityEntityLabel(activity.entity_type)}${title}`;
+
+  const descriptions: string[] = [];
+  const changes = activity.changes || {};
+  if (changes.status) {
+    descriptions.push(
+      `将状态从“${activityValue("status", changes.status.old)}”调整为“${activityValue("status", changes.status.new)}”`,
+    );
+  }
+  if (changes.due_at) {
+    descriptions.push(
+      `将截止日期从“${activityValue("due_at", changes.due_at.old)}”调整为“${activityValue("due_at", changes.due_at.new)}”`,
+    );
+  }
+  if (changes.title) {
+    descriptions.push(
+      `将标题从“${String(changes.title.old || "未命名")}”调整为“${String(changes.title.new || "未命名")}”`,
+    );
+  }
+  if (changes.priority) {
+    descriptions.push(
+      `将优先级从“${activityValue("priority", changes.priority.old)}”调整为“${activityValue("priority", changes.priority.new)}”`,
+    );
+  }
+  const genericFields = [
+    ["description", "说明"],
+    ["assignees", "负责人"],
+    ["goal_id", "所属目标"],
+    ["sub_goal_id", "所属小目标"],
+  ] as const;
+  const genericChanges = genericFields
+    .filter(([field]) => Boolean(changes[field]))
+    .map(([, label]) => label);
+  if (genericChanges.length) descriptions.push(`修改了${genericChanges.join("、")}`);
+  return ` 修改了${title}：${descriptions.join("；") || "更新了内容"}`;
+}
+
+function activityEntityLabel(type: ActivityLog["entity_type"]) {
+  return type === "task" ? "任务" : type === "goal" ? "大目标" : "小目标";
+}
+
+function activityValue(field: "status" | "due_at" | "priority", value: unknown) {
+  if (field === "status") {
+    return statusLabel[String(value) as Status] || String(value || "未知状态");
+  }
+  if (field === "priority") {
+    return value === "high" ? "高" : value === "low" ? "低" : value === "medium" ? "中" : String(value || "未设置");
+  }
+  if (!value) return "未设置";
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(date);
+}
+
+function formatActivityTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
 }
 
 function dateText(d: string) {

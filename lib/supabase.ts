@@ -51,6 +51,17 @@ export type WorkspaceSnapshot = {
     sub_goal_id: string | null;
     assignees: string[];
   }>;
+  activity_logs: Array<{
+    id: string;
+    actor_id: string | null;
+    actor_name: string;
+    entity_type: "task" | "goal" | "sub_goal";
+    entity_id: string;
+    entity_title: string;
+    action: "created" | "updated" | "status_changed" | "deleted";
+    changes: Record<string, { old: unknown; new: unknown }>;
+    created_at: string;
+  }>;
 };
 
 export const plannerApi = {
