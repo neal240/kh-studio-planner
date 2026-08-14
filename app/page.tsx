@@ -42,6 +42,14 @@ type Task = {
   subGoalId?: string;
 };
 type ActivityLog = WorkspaceSnapshot["activity_logs"][number];
+type ActivityGroup = {
+  key: string;
+  actorName: string;
+  entityType: ActivityLog["entity_type"];
+  entityTitle: string;
+  createdAt: string;
+  activities: ActivityLog[];
+};
 
 const initialTasks: Task[] = [
   {
@@ -149,6 +157,7 @@ export default function Home() {
   const [subGoals, setSubGoals] = useState<SubGoal[]>([]);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [activityDrawerOpen, setActivityDrawerOpen] = useState(false);
   const [goalModal, setGoalModal] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [subGoalModal, setSubGoalModal] = useState(false);
@@ -854,7 +863,10 @@ export default function Home() {
                   </div>
                   <DashboardCalendar tasks={tasks} toggle={toggleTask} />
                 </section>
-                <ActivityPanel activities={activities} />
+                <ActivityPanel
+                  activities={activities}
+                  open={() => setActivityDrawerOpen(true)}
+                />
               </aside>
             </div>
           </>
@@ -1140,6 +1152,12 @@ export default function Home() {
         </div>
       )}
       {subGoalModal && (editingGoal||currentGoal) && <div className="overlay" onMouseDown={()=>{setSubGoalModal(false);setEditingGoal(null)}}><form className="modal" onSubmit={addSubGoal} onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><span className="goal-tag">{(editingGoal||currentGoal)?.title}</span><h2>新建小目标</h2></div><button type="button" onClick={()=>{setSubGoalModal(false);setEditingGoal(null)}}>×</button></div><label>小目标名称<input name="title" required placeholder="例如：完成战斗系统原型"/></label><label>说明（可选）<input name="description" placeholder="这个阶段要达成什么"/></label><button className="primary submit">创建小目标</button></form></div>}
+      {activityDrawerOpen && (
+        <ActivityDrawer
+          activities={activities}
+          close={() => setActivityDrawerOpen(false)}
+        />
+      )}
       {toast && (
         <div className="toast">
           <span>✓</span>
@@ -1787,7 +1805,14 @@ function DashboardCalendar({
   );
 }
 
-function ActivityPanel({ activities }: { activities: ActivityLog[] }) {
+function ActivityPanel({
+  activities,
+  open,
+}: {
+  activities: ActivityLog[];
+  open: () => void;
+}) {
+  const groups = groupActivities(activities).slice(0, 3);
   return (
     <section className="activity-panel" aria-label="最近动态">
       <div className="activity-head">
@@ -1795,30 +1820,188 @@ function ActivityPanel({ activities }: { activities: ActivityLog[] }) {
           <span className="goal-tag">协作记录</span>
           <h2>最近动态</h2>
         </div>
-        <span>{activities.length} 条</span>
+        <button type="button" onClick={open} disabled={activities.length === 0}>
+          查看全部
+        </button>
       </div>
-      {activities.length === 0 ? (
+      {groups.length === 0 ? (
         <p className="activity-empty">还没有操作记录</p>
       ) : (
         <div className="activity-list">
-          {activities.slice(0, 8).map((activity) => (
-            <article className="activity-item" key={activity.id}>
-              <span className="activity-avatar">{activity.actor_name[0]}</span>
+          {groups.map((group) => (
+            <article className="activity-item activity-preview-item" key={group.key}>
+              <span className="activity-avatar">{group.actorName[0]}</span>
               <div>
                 <p>
-                  <b>{activity.actor_name}</b>
-                  {activityDescription(activity)}
+                  <b>{group.actorName}</b>
+                  {activityGroupDescription(group)}
                 </p>
-                <time dateTime={activity.created_at}>
-                  {formatActivityTime(activity.created_at)}
+                <time dateTime={group.createdAt}>
+                  {formatActivityTime(group.createdAt)}
                 </time>
               </div>
             </article>
           ))}
         </div>
       )}
+      {activities.length > 0 && (
+        <button className="activity-more" type="button" onClick={open}>
+          查看全部 {activities.length} 条动态
+        </button>
+      )}
     </section>
   );
+}
+
+function ActivityDrawer({
+  activities,
+  close,
+}: {
+  activities: ActivityLog[];
+  close: () => void;
+}) {
+  const [filter, setFilter] = useState<"all" | "task" | "goal">("all");
+  const [visibleCount, setVisibleCount] = useState(20);
+  const filtered = activities.filter((activity) =>
+    filter === "all"
+      ? true
+      : filter === "task"
+        ? activity.entity_type === "task"
+        : activity.entity_type !== "task",
+  );
+  const groups = groupActivities(filtered);
+  const visibleGroups = groups.slice(0, visibleCount);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [close]);
+
+  return (
+    <div className="activity-drawer-layer">
+      <button
+        className="activity-drawer-scrim"
+        type="button"
+        aria-label="关闭最近动态"
+        onClick={close}
+      />
+      <aside className="activity-drawer" aria-label="全部动态">
+        <div className="activity-drawer-head">
+          <div>
+            <span className="goal-tag">协作记录</span>
+            <h2>全部动态</h2>
+            <p>共 {activities.length} 条操作记录</p>
+          </div>
+          <button type="button" aria-label="关闭" onClick={close}>×</button>
+        </div>
+        <div className="activity-filters" role="group" aria-label="动态筛选">
+          {([
+            ["all", "全部"],
+            ["task", "任务"],
+            ["goal", "目标"],
+          ] as const).map(([value, label]) => (
+            <button
+              type="button"
+              className={filter === value ? "selected" : ""}
+              onClick={() => {
+                setFilter(value);
+                setVisibleCount(20);
+              }}
+              key={value}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="activity-drawer-list">
+          {visibleGroups.length === 0 ? (
+            <p className="activity-empty">这个分类还没有动态</p>
+          ) : (
+            visibleGroups.map((group) => (
+              <article className="activity-drawer-item" key={group.key}>
+                <span className="activity-avatar">{group.actorName[0]}</span>
+                <div>
+                  <p>
+                    <b>{group.actorName}</b>
+                    {activityGroupDescription(group)}
+                  </p>
+                  <time dateTime={group.createdAt}>
+                    {formatActivityTime(group.createdAt)}
+                    {group.activities.length > 1
+                      ? ` · 合并 ${group.activities.length} 次连续操作`
+                      : ""}
+                  </time>
+                </div>
+              </article>
+            ))
+          )}
+          {visibleGroups.length < groups.length && (
+            <button
+              className="activity-load-more"
+              type="button"
+              onClick={() => setVisibleCount((count) => count + 20)}
+            >
+              加载更多
+            </button>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function groupActivities(activities: ActivityLog[]) {
+  const groups: ActivityGroup[] = [];
+  activities.forEach((activity) => {
+    const previous = groups[groups.length - 1];
+    const previousActivity = previous?.activities[previous.activities.length - 1];
+    const closeInTime = previousActivity
+      ? new Date(previousActivity.created_at).getTime() -
+          new Date(activity.created_at).getTime() <=
+        5 * 60 * 1000
+      : false;
+    const sameTarget =
+      previous &&
+      previousActivity.actor_id === activity.actor_id &&
+      previousActivity.actor_name === activity.actor_name &&
+      previousActivity.entity_type === activity.entity_type &&
+      previousActivity.entity_id === activity.entity_id;
+    const mergeable =
+      previousActivity &&
+      ["updated", "status_changed"].includes(previousActivity.action) &&
+      ["updated", "status_changed"].includes(activity.action);
+    if (previous && sameTarget && closeInTime && mergeable) {
+      previous.activities.push(activity);
+      return;
+    }
+    groups.push({
+      key: activity.id,
+      actorName: activity.actor_name,
+      entityType: activity.entity_type,
+      entityTitle: activity.entity_title,
+      createdAt: activity.created_at,
+      activities: [activity],
+    });
+  });
+  return groups;
+}
+
+function activityGroupDescription(group: ActivityGroup) {
+  if (group.activities.length === 1) {
+    return activityDescription(group.activities[0]);
+  }
+  const details = group.activities
+    .flatMap((activity) => activityChangeDescriptions(activity))
+    .filter((description, index, all) => all.indexOf(description) === index);
+  return ` 修改了${activityEntityLabel(group.entityType)}「${group.entityTitle}」：${details.join("；") || "更新了多项内容"}`;
 }
 
 function activityDescription(activity: ActivityLog) {
@@ -1826,6 +2009,11 @@ function activityDescription(activity: ActivityLog) {
   if (activity.action === "created") return ` 创建了${activityEntityLabel(activity.entity_type)}${title}`;
   if (activity.action === "deleted") return ` 删除了${activityEntityLabel(activity.entity_type)}${title}`;
 
+  const descriptions = activityChangeDescriptions(activity);
+  return ` 修改了${title}：${descriptions.join("；") || "更新了内容"}`;
+}
+
+function activityChangeDescriptions(activity: ActivityLog) {
   const descriptions: string[] = [];
   const changes = activity.changes || {};
   if (changes.status) {
@@ -1858,7 +2046,7 @@ function activityDescription(activity: ActivityLog) {
     .filter(([field]) => Boolean(changes[field]))
     .map(([, label]) => label);
   if (genericChanges.length) descriptions.push(`修改了${genericChanges.join("、")}`);
-  return ` 修改了${title}：${descriptions.join("；") || "更新了内容"}`;
+  return descriptions;
 }
 
 function activityEntityLabel(type: ActivityLog["entity_type"]) {

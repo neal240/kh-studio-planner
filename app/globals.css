@@ -216,10 +216,20 @@
   font-size: 17px;
   margin: 11px 0 0;
 }
-.activity-head > span {
+.activity-head > button {
+  border: 0;
+  background: transparent;
   color: var(--sub);
   font-size: 10px;
   padding-top: 5px;
+  cursor: pointer;
+}
+.activity-head > button:hover {
+  color: var(--text);
+}
+.activity-head > button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 .activity-list {
   display: grid;
@@ -253,6 +263,12 @@
   color: var(--sub);
   overflow-wrap: anywhere;
 }
+.activity-preview-item p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
 .activity-item p b {
   color: var(--text);
   margin-right: 3px;
@@ -268,6 +284,146 @@
   color: var(--sub);
   font-size: 11px;
   text-align: center;
+}
+.activity-more {
+  width: 100%;
+  height: 34px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--sub);
+  font-size: 10px;
+  cursor: pointer;
+}
+.activity-more:hover {
+  color: var(--text);
+  border-color: #cfd0d3;
+}
+.activity-drawer-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  display: flex;
+  justify-content: flex-end;
+}
+.activity-drawer-scrim {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: rgba(10, 11, 13, 0.42);
+  backdrop-filter: blur(5px);
+  cursor: default;
+}
+.activity-drawer {
+  position: relative;
+  width: min(430px, 100%);
+  height: 100%;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  box-shadow: -18px 0 55px rgba(0, 0, 0, 0.16);
+  display: flex;
+  flex-direction: column;
+  animation: activity-drawer-in 0.22s ease-out;
+}
+@keyframes activity-drawer-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.activity-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 28px 26px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.activity-drawer-head h2 {
+  font-size: 22px;
+  margin: 12px 0 6px;
+}
+.activity-drawer-head p {
+  margin: 0;
+  color: var(--sub);
+  font-size: 11px;
+}
+.activity-drawer-head > button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 21px;
+  cursor: pointer;
+}
+.activity-filters {
+  display: flex;
+  gap: 7px;
+  padding: 16px 26px;
+  border-bottom: 1px solid var(--line);
+}
+.activity-filters button {
+  height: 31px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--sub);
+  font-size: 11px;
+  cursor: pointer;
+}
+.activity-filters button.selected {
+  background: var(--black);
+  border-color: var(--black);
+  color: var(--panel);
+}
+.activity-drawer-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 26px 28px;
+  overscroll-behavior: contain;
+}
+.activity-drawer-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+.activity-drawer-item .activity-avatar {
+  width: 34px;
+  height: 34px;
+}
+.activity-drawer-item p {
+  margin: 0;
+  color: var(--sub);
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.activity-drawer-item p b {
+  color: var(--text);
+  margin-right: 3px;
+}
+.activity-drawer-item time {
+  display: block;
+  margin-top: 6px;
+  color: #a1a3a7;
+  font-size: 9px;
+}
+.activity-load-more {
+  width: 100%;
+  height: 38px;
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--sub);
+  font-size: 11px;
+  cursor: pointer;
 }
 
 :root {
@@ -1563,6 +1719,37 @@ header p {
   }
   .side-calendar-head h2 {
     font-size: 16px;
+  }
+  .activity-panel {
+    padding: 16px;
+    border-radius: 17px;
+  }
+  .activity-drawer-layer {
+    align-items: flex-end;
+  }
+  .activity-drawer {
+    width: 100%;
+    height: min(92vh, 760px);
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 22px 22px 0 0;
+    animation-name: activity-sheet-in;
+  }
+  @keyframes activity-sheet-in {
+    from { transform: translateY(28px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .activity-drawer-head {
+    padding: 22px 20px 17px;
+  }
+  .activity-drawer-head h2 {
+    font-size: 20px;
+  }
+  .activity-filters {
+    padding: 13px 20px;
+  }
+  .activity-drawer-list {
+    padding: 2px 20px 24px;
   }
 }
 .no-current-goal {
