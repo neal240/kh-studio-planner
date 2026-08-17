@@ -852,7 +852,9 @@ export default function Home() {
                   <div className="side-calendar-head">
                     <div>
                       <span className="goal-tag">日程概览</span>
-                      <h2>2026 年 8 月</h2>
+                      <h2>
+                        {now.getFullYear()} 年 {now.getMonth() + 1} 月
+                      </h2>
                     </div>
                     <button
                       className="calendar-link"
@@ -861,7 +863,7 @@ export default function Home() {
                       查看日历
                     </button>
                   </div>
-                  <DashboardCalendar tasks={tasks} toggle={toggleTask} />
+                  <DashboardCalendar tasks={tasks} toggle={toggleTask} now={now} />
                 </section>
                 <ActivityPanel
                   activities={activities}
@@ -1701,48 +1703,22 @@ function Calendar({
 function DashboardCalendar({
   tasks,
   toggle,
+  now,
 }: {
   tasks: Task[];
   toggle: (id: number | string) => void;
+  now: Date;
 }) {
-  const days = [
-    null,
-    null,
-    null,
-    null,
-    null,
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    17,
-    18,
-    19,
-    20,
-    21,
-    22,
-    23,
-    24,
-    25,
-    26,
-    27,
-    28,
-    29,
-    30,
-    31,
+  const year = now.getFullYear();
+  const monthIndex = now.getMonth();
+  const firstDayOffset = (new Date(year, monthIndex, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const days: Array<number | null> = [
+    ...Array.from({ length: firstDayOffset }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
   ];
+  const dateKeyForDay = (day: number) =>
+    `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   const upcoming = tasks
     .filter((task) => Boolean(task.date) && task.status !== "done")
     .sort((a, b) => a.date.localeCompare(b.date))
@@ -1760,19 +1736,21 @@ function DashboardCalendar({
             <span className="blank" key={`blank-${index}`} />
           ) : (
             <button
-              className={day === 13 ? "today" : ""}
+              className={day === now.getDate() ? "today" : ""}
               key={day}
               onClick={() => {
+                const dateKey = dateKeyForDay(day);
                 const task = tasks.find(
-                  (item) => Number(item.date.slice(-2)) === day,
+                  (item) => item.date === dateKey && item.status !== "done",
                 );
                 if (task) toggle(task.id);
               }}
             >
               <b>{day}</b>
-              {tasks.some((task) => Number(task.date.slice(-2)) === day) && (
-                <i />
-              )}
+              {tasks.some(
+                (task) =>
+                  task.date === dateKeyForDay(day) && task.status !== "done",
+              ) && <i />}
             </button>
           ),
         )}
@@ -1788,8 +1766,8 @@ function DashboardCalendar({
           upcoming.map((task) => (
             <button key={task.id} onClick={() => toggle(task.id)}>
               <time>
-                {Number(task.date.slice(-2))}
-                <small>8月</small>
+                {Number(task.date.slice(8, 10))}
+                <small>{Number(task.date.slice(5, 7))}月</small>
               </time>
               <span>
                 <b>{task.title}</b>
