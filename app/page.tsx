@@ -1458,6 +1458,7 @@ function TaskList({
   const [openMenu, setOpenMenu] = useState<number | string | null>(null);
   const [openStatusMenu, setOpenStatusMenu] = useState<number | string | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [expandedCompleted, setExpandedCompleted] = useState<Record<string, boolean>>({});
   const groups = [
     ...subGoals.filter((sub) => tasks.some((task) => task.subGoalId === sub.id)).map((sub) => ({ id: sub.id, title: sub.title, tasks: tasks.filter((task) => task.subGoalId === sub.id) })),
     { id: "ungrouped", title: "其他任务", tasks: tasks.filter((task) => !task.subGoalId) },
@@ -1518,7 +1519,54 @@ function TaskList({
           <b>还没有任务</b>
           <span>点击右上角“新建任务”开始规划。</span>
         </div>
-      ) : groups.map((group) => <section className="task-folder" key={group.id}><button className="folder-head" onClick={()=>setCollapsed(state=>({...state,[group.id]:!state[group.id]}))}><span className="folder-icon">{collapsed[group.id]?"▸":"▾"}</span><b>{group.title}</b><em>{group.tasks.length} 项</em><span>{group.tasks.filter(task=>task.status==="done").length}/{group.tasks.length} 完成</span></button>{!collapsed[group.id]&&<div className="folder-tasks">{group.tasks.map(taskRow)}</div>}</section>) /* legacy rows retained below */}
+      ) : groups.map((group) => {
+        const activeTasks = group.tasks.filter((task) => task.status !== "done");
+        const completedTasks = group.tasks.filter((task) => task.status === "done");
+        const groupKey = String(group.id);
+        const isCompletedExpanded = Boolean(expandedCompleted[groupKey]);
+
+        return (
+          <section className="task-folder" key={group.id}>
+            <button
+              type="button"
+              className="folder-head"
+              onClick={() => setCollapsed((state) => ({ ...state, [groupKey]: !state[groupKey] }))}
+              aria-expanded={!collapsed[groupKey]}
+            >
+              <span className="folder-icon">{collapsed[groupKey] ? "▸" : "▾"}</span>
+              <b>{group.title}</b>
+              <em>{group.tasks.length} 项</em>
+              <span>{completedTasks.length}/{group.tasks.length} 完成</span>
+            </button>
+            {!collapsed[groupKey] && (
+              <div className="folder-tasks">
+                {activeTasks.map(taskRow)}
+                {completedTasks.length > 0 && (
+                  <section className="completed-tasks">
+                    <button
+                      type="button"
+                      className="completed-tasks-toggle"
+                      onClick={() => setExpandedCompleted((state) => ({
+                        ...state,
+                        [groupKey]: !state[groupKey],
+                      }))}
+                      aria-expanded={isCompletedExpanded}
+                    >
+                      <span className="folder-icon">{isCompletedExpanded ? "▾" : "▸"}</span>
+                      <b>已完成</b>
+                      <em>{completedTasks.length} 项</em>
+                      <span className="completed-toggle-label">
+                        {isCompletedExpanded ? "收起" : "展开"}
+                      </span>
+                    </button>
+                    {isCompletedExpanded && completedTasks.map(taskRow)}
+                  </section>
+                )}
+              </div>
+            )}
+          </section>
+        );
+      }) /* legacy rows retained below */}
       {/*
         tasks.map((t) => (
           <article className="task-row" key={t.id}>
