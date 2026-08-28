@@ -2110,8 +2110,34 @@ function formatActivityTime(value: string) {
 
 function dateText(d: string) {
   if (!d) return "无截止日期";
-  const n = Number(d.slice(-2));
-  return n === 13 ? "今天" : n === 14 ? "明天" : `8月${n}日`;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
+  if (!match) return d;
+
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const date = new Date(year, month - 1, day);
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return d;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (date.getTime() === today.getTime()) return "今天";
+  if (date.getTime() === tomorrow.getTime()) return "明天";
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "long",
+    day: "numeric",
+  }).format(date);
 }
 
 function Icon({ name }: { name: string }) {
